@@ -23,12 +23,15 @@ import uuid
 from collections.abc import MutableMapping
 
 from dateutil.parser import isoparse
+
+from rocrate.rocrate import ROCrate
 from .. import vocabs
+
 
 
 class Entity(MutableMapping):
 
-    def __init__(self, crate, identifier=None, properties=None):
+    def __init__(self, crate: ROCrate, identifier=None, properties=None):
         self.crate = crate
         if identifier:
             self.__id = self.format_id(identifier)
