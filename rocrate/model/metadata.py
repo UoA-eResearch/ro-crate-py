@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import List, Dict, Tuple
 
 from rocrate.model.encryptedcontextentity import EncryptedContextEntity
-from rocrate.rocrate import ROCrate
+# from rocrate.rocrate import ROCrate
 
 from .dataset import Dataset
 from .file import File
@@ -44,7 +44,7 @@ class Metadata(File):
         if source is None and dest_path is None:
             dest_path = self.BASENAME
         super().__init__(
-            crate: ROCrate,
+            crate= crate,
             source=source,
             dest_path=dest_path,
             fetch_remote=False,
@@ -105,7 +105,7 @@ class Metadata(File):
         for field in encrypted_fields:
             pubkey_fingerprints = field[1]
             pubkey_fingerprints.extend(self.crate.pubkey_fingerprints)
-            pubkey_fingerprints = list(set(pubkey_fingerprints))  # strip out duplicates
+            pubkey_fingerprints = tuple(set(pubkey_fingerprints))  # strip out duplicates
             if pubkey_fingerprints in aggregated_fields:
                 aggregated_fields[pubkey_fingerprints].append(field[0])
             else:
@@ -127,11 +127,11 @@ class Metadata(File):
         gpg = GPG(gpgbinary=self.crate.gpg_binary)
         for fingerprints, fields in encrypted_fields.items():
             json_representation = json.dumps(fields)
-            gpg.trust_keys(fingerprints, 'TRUST_FULLY')
+            gpg.trust_keys(fingerprints, 'TRUST_ULTIMATE')
             encrypted_field = gpg.encrypt(json_representation, fingerprints)
             if not encrypted_field.ok:
                 raise Warning(f'Unable to encrypt field. GPG status: {encrypted_field.status}')
-            encrypted_field_dictionary[','.join(str, fingerprints)] = encrypted_field
+            encrypted_field_dictionary[','.join(str, fingerprints) if len(fingerprints) > 1 else fingerprints[0]] = encrypted_field._as_text()
             encrypted_field_list.append(encrypted_field_dictionary)
         return encrypted_field_list
 
