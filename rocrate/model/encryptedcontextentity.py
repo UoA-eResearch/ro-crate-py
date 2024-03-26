@@ -16,7 +16,7 @@
 
 from typing import Any, List, Optional
 
-from rocrate.rocrate import ROCrate
+# from rocrate.rocrate import ROCrate
 
 from .contextentity import ContextEntity
 
@@ -34,7 +34,7 @@ class EncryptedContextEntity(ContextEntity):
 
     def __init__(
         self,
-        crate: ROCrate,
+        crate,
         identifier: Optional[Any] = None,
         properties: Optional[Any] = None,
         pubkey_fingerprints: Optional[List[str]] = None,
