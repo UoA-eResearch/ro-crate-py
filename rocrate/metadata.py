@@ -1,9 +1,8 @@
-# Copyright 2019-2024 The University of Manchester, UK
-# Copyright 2020-2024 Vlaams Instituut voor Biotechnologie (VIB), BE
-# Copyright 2020-2024 Barcelona Supercomputing Center (BSC), ES
-# Copyright 2020-2024 Center for Advanced Studies, Research and Development in Sardinia (CRS4), IT
-# Copyright 2022-2024 École Polytechnique Fédérale de Lausanne, CH
-# Copyright 2024 Data Centre, SciLifeLab, SE
+# Copyright 2019-2023 The University of Manchester, UK
+# Copyright 2020-2023 Vlaams Instituut voor Biotechnologie (VIB), BE
+# Copyright 2020-2023 Barcelona Supercomputing Center (BSC), ES
+# Copyright 2020-2023 Center for Advanced Studies, Research and Development in Sardinia (CRS4), IT
+# Copyright 2022-2023 École Polytechnique Fédérale de Lausanne, CH
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,27 +17,20 @@
 # limitations under the License.
 
 import json
-from pathlib import Path
-from typing import List, Dict, Tuple
+import warnings
 
-from rocrate.model.encryptedcontextentity import EncryptedContextEntity
-# from rocrate.rocrate import ROCrate
-
-from .dataset import Dataset
-from .file import File
-
-WORKFLOW_PROFILE = "https://w3id.org/workflowhub/workflow-ro-crate/1.0"
+from .model import Metadata, LegacyMetadata
 
 
-class Metadata(File):
+def read_metadata(metadata_path):
     """\
-    RO-Crate metadata file.
+    Read an RO-Crate metadata file.
+
+    Return a tuple of two elements: the context; a dictionary that maps entity
+    ids to the entities themselves.
     """
-    if isinstance(metadata_path, dict):
-        metadata = metadata_path
-    else:
-        with open(metadata_path) as f:
-            metadata = json.load(f)
+    with open(metadata_path) as f:
+        metadata = json.load(f)
     try:
         context = metadata['@context']
         graph = metadata['@graph']
@@ -145,47 +137,70 @@ class Metadata(File):
         return encrypted_field_list
 
 
-
-    def write(self, base_path):
-        write_path = Path(base_path) / self.id
-        as_jsonld = self.generate()
-        with open(write_path, "w") as outfile:
-            json.dump(as_jsonld, outfile, indent=4, sort_keys=True)
-
-    @property
-    def root(self) -> Dataset:
-        return self.crate.root_dataset
-
-
-class LegacyMetadata(Metadata):
-
-    BASENAME = "ro-crate-metadata.jsonld"
-    PROFILE = "https://w3id.org/ro/crate/1.0"
+def _check_descriptor(descriptor, entities):
+    if descriptor["@type"] != "CreativeWork":
+        raise ValueError('metadata descriptor must be of type "CreativeWork"')
+    try:
+        root = entities[descriptor["about"]["@id"]]
+    except (KeyError, TypeError):
+        raise ValueError("metadata descriptor does not reference the root entity")
+    if ("Dataset" not in root["@type"] if isinstance(root["@type"], list) else root["@type"] != "Dataset"):
+        raise ValueError('root entity must have "Dataset" among its types')
+    return descriptor["@id"], root["@id"]
 
 
-# https://github.com/ResearchObject/ro-terms/tree/master/test
-TESTING_EXTRA_TERMS = {
-    "TestSuite": "https://w3id.org/ro/terms/test#TestSuite",
-    "TestInstance": "https://w3id.org/ro/terms/test#TestInstance",
-    "TestService": "https://w3id.org/ro/terms/test#TestService",
-    "TestDefinition": "https://w3id.org/ro/terms/test#TestDefinition",
-    "PlanemoEngine": "https://w3id.org/ro/terms/test#PlanemoEngine",
-    "JenkinsService": "https://w3id.org/ro/terms/test#JenkinsService",
-    "TravisService": "https://w3id.org/ro/terms/test#TravisService",
-    "GithubService": "https://w3id.org/ro/terms/test#GithubService",
-    "instance": "https://w3id.org/ro/terms/test#instance",
-    "runsOn": "https://w3id.org/ro/terms/test#runsOn",
-    "resource": "https://w3id.org/ro/terms/test#resource",
-    "definition": "https://w3id.org/ro/terms/test#definition",
-    "engineVersion": "https://w3id.org/ro/terms/test#engineVersion",
-}
+def find_root_entity_id(entities):
+    """\
+    Find metadata file descriptor and root data entity.
 
+    Expects as input a dictionary that maps JSON entity IDs to the entities
+    themselves (like the second element returned by read_metadata).
 
-def metadata_class(descriptor_id):
-    basename = descriptor_id.rsplit("/", 1)[-1]
-    if basename == Metadata.BASENAME:
-        return Metadata
-    elif basename == LegacyMetadata.BASENAME:
-        return LegacyMetadata
+    Return a tuple of the corresponding identifiers (descriptor, root).
+    If the entities are not found, raise KeyError. If they are found,
+    but they don't satisfy the required constraints, raise ValueError.
+
+    In the general case, the metadata file descriptor id can be an
+    absolute URI whose last path segment is "ro-crate-metadata.json[ld]".
+    Since there can be more than one such id in the crate, we need to
+    choose among the corresponding (descriptor, root) entity pairs. First, we
+    exclude those that don't satisfy other constraints, such as the
+    descriptor entity being of type CreativeWork, etc.; if this doesn't
+    leave us with a single pair, we try to pick one with a
+    heuristic. Suppose we are left with the (m1, r1) and (m2, r2) pairs:
+    if r1 is the actual root of this crate, then m2 and r2 are regular
+    files in it, and as such they must appear in r1's hasPart; r2,
+    however, is not required to have a hasPart property listing other
+    files. Thus, we look for a pair whose root entity "contains" all
+    descriptor entities from other pairs. If there is no such pair, or there
+    is more than one, we just return an arbitrary pair.
+
+    """
+    descriptor = entities.get(Metadata.BASENAME, entities.get(LegacyMetadata.BASENAME))
+    if descriptor:
+        return _check_descriptor(descriptor, entities)
+    candidates = []
+    for id_, e in entities.items():
+        basename = id_.rsplit("/", 1)[-1]
+        if basename == Metadata.BASENAME or basename == LegacyMetadata.BASENAME:
+            try:
+                candidates.append(_check_descriptor(e, entities))
+            except ValueError:
+                pass
+    if not candidates:
+        raise KeyError("Metadata file descriptor not found")
+    elif len(candidates) == 1:
+        return candidates[0]
     else:
-        raise ValueError(f"Invalid metadata descriptor ID: {descriptor_id!r}")
+        warnings.warn("Multiple metadata file descriptors, will pick one with a heuristic")
+        descriptor_ids = set(_[0] for _ in candidates)
+        for m_id, r_id in candidates:
+            try:
+                root = entities[r_id]
+                part_ids = set(_["@id"] for _ in root["hasPart"])
+            except KeyError:
+                continue
+            if part_ids >= descriptor_ids - {m_id}:
+                # if True for more than one candidate, this pick is arbitrary
+                return m_id, r_id
+        return candidates[0]  # fall back to arbitrary pick
