@@ -104,7 +104,8 @@ class Metadata(File):
         aggregated_fields = {}
         for field in encrypted_fields:
             pubkey_fingerprints = field[1]
-            pubkey_fingerprints.extend(self.crate.pubkey_fingerprints)
+            if self.crate.pubkey_fingerprints:
+                pubkey_fingerprints.extend(self.crate.pubkey_fingerprints)
             pubkey_fingerprints = tuple(set(pubkey_fingerprints))  # strip out duplicates
             if pubkey_fingerprints in aggregated_fields:
                 aggregated_fields[pubkey_fingerprints].append(field[0])

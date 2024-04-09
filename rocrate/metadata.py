@@ -36,7 +36,7 @@ def read_metadata(metadata_path):
         graph = metadata['@graph']
     except KeyError:
         raise ValueError(f"{metadata_path} must have a @context and a @graph")
-    return context, {_["@id"]: _ for _ in graph}
+    return context, {_["@id"]: _ for _ in graph}, metadata.get("@encrypted")
 
     BASENAME = "ro-crate-metadata.json"
     PROFILE = "https://w3id.org/ro/crate/1.1"
