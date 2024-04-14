@@ -24,11 +24,13 @@ import shutil
 import tempfile
 import uuid
 import zipfile
+import json
 from collections import OrderedDict
 from pathlib import Path
 from sys import platform
-from typing import List, Optional
+from typing import List, Optional, Dict
 from urllib.parse import urljoin
+import gnupg
 
 from .metadata import find_root_entity_id, read_metadata
 from .model import (
@@ -50,6 +52,7 @@ from .model import (
     TestService,
     TestSuite,
     WorkflowDescription,
+    encryptedcontextentity
 )
 from .model.computationalworkflow import galaxy_to_abstract_cwl
 from .model.computerlanguage import get_lang
@@ -57,7 +60,6 @@ from .model.metadata import TESTING_EXTRA_TERMS, WORKFLOW_PROFILE, metadata_clas
 from .model.softwareapplication import get_app
 from .model.testservice import get_service
 from .utils import as_list, get_norm_value, is_url, subclasses, walk
-
 
 def pick_type(json_entity, type_map, fallback=None):
     try:
@@ -80,6 +82,7 @@ class ROCrate:
         exclude=None,
         pubkey_fingerprints: Optional[List[str]] = None,
         gpg_binary: Optional[str] = None,
+        gpg_passphrase: Optional[str] = None
     ):
         self.exclude = exclude
         self.__entity_map = {}
@@ -90,15 +93,6 @@ class ROCrate:
         self.preview = None
         if gen_preview:
             self.add(Preview(self))
-        if not source:
-            # create a new ro-crate
-            self.add(RootDataset(self), Metadata(self))
-        elif init:
-            self.__init_from_tree(source, gen_preview=gen_preview)
-        else:
-            source = self.__read(source, gen_preview=gen_preview)
-        # in the zip case, self.source is the extracted dir
-        self.source = source
         self.pubkey_fingerprints = pubkey_fingerprints
         if gpg_binary:
             self.gpg_binary = gpg_binary
@@ -115,6 +109,17 @@ class ROCrate:
             raise NotImplementedError(
                 "Unknown OS, please define where the gpg executable binary can be located"
             )
+        self.gpg_passphrase = gpg_passphrase
+        if not source:
+            # create a new ro-crate
+            self.add(RootDataset(self), Metadata(self))
+        elif init:
+            self.__init_from_tree(source, gen_preview=gen_preview)
+        else:
+            source = self.__read(source, gen_preview=gen_preview)
+        # in the zip case, self.source is the extracted dir
+        self.source = source
+        
 
     def __init_from_tree(self, top_dir, gen_preview=False):
         top_dir = Path(top_dir)
@@ -156,7 +161,9 @@ class ROCrate:
                 metadata_path = source / LegacyMetadata.BASENAME
             if not metadata_path.is_file():
                 raise ValueError(f"Not a valid RO-Crate: missing {Metadata.BASENAME}")
-        _, entities = read_metadata(metadata_path)
+            _, entities, encrypted = read_metadata(metadata_path)
+            if encrypted:
+                self.__decrypt(encrypted)
         self.__read_data_entities(entities, source, gen_preview)
         self.__read_contextual_entities(entities)
         return source
@@ -206,6 +213,36 @@ class ROCrate:
             assert identifier == entity.pop("@id")
             cls = pick_type(entity, type_map, fallback=ContextEntity)
             self.add(cls(self, identifier, entity))
+
+    def __decrypt(self, encrypted:List[Dict[str,str]]) -> Dict[str, Dict[str, str]]:
+        """Decrypts blocks of encrypted metadata for which the user possesses private keys
+        and adds them to the current crate as EncryptedContextEntities.
+        
+    	Args:
+        	encrypted (List[Dict[str,str]]): Encrypted fields, 
+            aggregated by comma separated strings of pubkeys
+
+    	Returns:
+        	Dict[str, Dict[str, str]]: jsonLD representation of all decrypted entities, 
+            keyed by their @id
+        """
+        gpg = gnupg.GPG(gpgbinary=self.gpg_binary)
+        decrypted_entitites = {}
+        for encrypted_elements in encrypted:
+            for fingerprints, encrypted_block in encrypted_elements.items():
+                decrypted = gpg.decrypt(encrypted_block,  passphrase=self.gpg_passphrase)
+                if not decrypted.ok:
+                    continue
+                decrypted_data = json.loads(decrypted.data)
+                decrypted_dict = {_["@id"]: _ for _ in decrypted_data}
+                for identifier, decrypted_item in decrypted_dict.items():
+                    self.add(encryptedcontextentity.EncryptedContextEntity(self,
+                    identifier, decrypted_item, pubkey_fingerprints=fingerprints.split(",")))
+                decrypted_entitites.update(decrypted_dict)
+        return decrypted_entitites
+
+
+
 
     @property
     def default_entities(self):

@@ -40,8 +40,13 @@ class EncryptedContextEntity(ContextEntity):
         pubkey_fingerprints: Optional[List[str]] = None,
     ) -> None:
         self.pubkey_fingerprints = []
+        fingerprints = set()
         if pubkey_fingerprints:
-            self.pubkey_fingerprints = list(set(pubkey_fingerprints))
+            fingerprints.update(pubkey_fingerprints)
+        if properties and properties.get("pubkey_fingerprints"):
+            fingerprints.update([properties["pubkey_fingerprints"]])
+            properties.pop("pubkey_fingerprints")
+        self.pubkey_fingerprints = list(fingerprints)
         super().__init__(crate, identifier, properties)
 
     def add_key(

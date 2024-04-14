@@ -26,8 +26,11 @@ def read_metadata(metadata_path):
     """\
     Read an RO-Crate metadata file.
 
-    Return a tuple of two elements: the context; a dictionary that maps entity
+    Return a tuple of elements: the context; a dictionary that maps entity
     ids to the entities themselves.
+
+    Returns a third element of encrypted PGP blocks if the crate contains encrypted metadata
+    otherwise None.
     """
     with open(metadata_path) as f:
         metadata = json.load(f)

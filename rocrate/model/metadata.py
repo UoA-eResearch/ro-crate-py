@@ -132,7 +132,7 @@ class Metadata(File):
             encrypted_field = gpg.encrypt(json_representation, fingerprints)
             if not encrypted_field.ok:
                 raise Warning(f'Unable to encrypt field. GPG status: {encrypted_field.status}')
-            encrypted_field_dictionary[','.join(str, fingerprints) if len(fingerprints) > 1 else fingerprints[0]] = encrypted_field._as_text()
+            encrypted_field_dictionary[','.join(fingerprints) if len(fingerprints) > 1 else fingerprints[0]] = encrypted_field._as_text()
             encrypted_field_list.append(encrypted_field_dictionary)
         return encrypted_field_list
 
