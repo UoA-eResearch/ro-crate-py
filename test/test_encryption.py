@@ -83,7 +83,7 @@ def test_encrypted_write_with_crate_key(tmpdir: Path, test_gpg_key:GenKey, test_
     assert metadata.get("@encrypted")
     encrypted_data = metadata["@encrypted"]
     gpg = GPG(crate.gpg_binary)
-    decrypted = gpg.decrypt(encrypted_data[0][test_gpg_key.fingerprint],
+    decrypted = gpg.decrypt(encrypted_data[0]["encrypted_graph"],
         passphrase= test_passphrase)
     assert decrypted.ok
     assert json.loads(decrypted.data)[0] == encrypted_entity.as_jsonld()
@@ -91,8 +91,7 @@ def test_encrypted_write_with_crate_key(tmpdir: Path, test_gpg_key:GenKey, test_
 
 def test_encrypted_write_with_enitity_key(tmpdir,
  test_gpg_key:GenKey,
- test_passphrase:str,
- test_fingerprint_no_secret:str):
+ test_passphrase:str,):
     """Test encryption when fingerprint is provided at the entity level
     """
     crate = ROCrate()
@@ -110,7 +109,7 @@ def test_encrypted_write_with_enitity_key(tmpdir,
     assert metadata.get("@encrypted")
     encrypted_data = metadata["@encrypted"]
     gpg = GPG(crate.gpg_binary)
-    decrypted = gpg.decrypt(encrypted_data[0][test_gpg_key.fingerprint],
+    decrypted = gpg.decrypt(encrypted_data[0]["encrypted_graph"],
     passphrase= test_passphrase)
     assert decrypted.ok
     assert json.loads(decrypted.data)[0] == encrypted_entity.as_jsonld()
@@ -134,7 +133,7 @@ def test_fail_decrypt_without_key(tmpdir:Path, test_fingerprint_no_secret, test_
     encrypted_data = metadata["@encrypted"]
     gpg = GPG(crate.gpg_binary)
     raw_decrypt = gpg.decrypt(
-        encrypted_data[0][test_fingerprint_no_secret],
+        encrypted_data[0]["encrypted_graph"],
         passphrase= test_passphrase)
     assert not raw_decrypt.ok
     read_crate = ROCrate(source=out_path)
@@ -178,6 +177,7 @@ def test_re_encrypt(tmpdir, test_gpg_key:GenKey, test_passphrase):
     crate = ROCrate(source=out_path, gpg_passphrase=test_passphrase)
     decrypted_result = crate.dereference("#test_encrypted_meta")
     assert isinstance(decrypted_result, EncryptedContextEntity)
+    #assert decrypted_result.pubkey_fingerprints == ""
     out_path = tmpdir / "ro_crate_out_again"
     crate.write(out_path)
     with open(out_path / "ro-crate-metadata.json", encoding='utf-8') as f:
@@ -185,7 +185,7 @@ def test_re_encrypt(tmpdir, test_gpg_key:GenKey, test_passphrase):
     assert metadata.get("@encrypted")
     encrypted_data = metadata["@encrypted"]
     gpg = GPG(crate.gpg_binary)
-    decrypted = gpg.decrypt(encrypted_data[0][test_gpg_key.fingerprint],
+    decrypted = gpg.decrypt(encrypted_data[0]["encrypted_graph"],
         passphrase= test_passphrase)
     assert decrypted.ok
     assert json.loads(decrypted.data)[0] == encrypted_entity.as_jsonld()

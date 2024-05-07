@@ -22,8 +22,10 @@
 import json
 from pathlib import Path
 from typing import List, Dict, Tuple
+from gnupg import GPG
 
 from rocrate.model.encryptedcontextentity import EncryptedContextEntity
+from .encryptedgraphmessage import EncryptedGraphMessage, PubkeyObject
 # from rocrate.rocrate import ROCrate
 
 from .dataset import Dataset
@@ -112,8 +114,8 @@ class Metadata(File):
             else:
                 aggregated_fields[pubkey_fingerprints] = [field[0]]
         return aggregated_fields
-        
-    def __encrypt_fields(self, encrypted_fields: Dict[List[str],List[Dict[str,str]]],) -> Dict[str,str]:
+
+    def __encrypt_fields(self, encrypted_fields: Dict[List[str],List[Dict[str,str]]],) -> list[str]:
         """Encrypt the JSON representation of the encrypted fields using the fingerprints provided
         
         Args:
@@ -123,17 +125,20 @@ class Metadata(File):
             Dict[str,str]: The encrypted fields
         """
         encrypted_field_list = []
-        encrypted_field_dictionary = {}
-        from gnupg import GPG
         gpg = GPG(gpgbinary=self.crate.gpg_binary)
         for fingerprints, fields in encrypted_fields.items():
             json_representation = json.dumps(fields)
             gpg.trust_keys(fingerprints, 'TRUST_ULTIMATE')
+            current_keys = gpg.list_keys()
             encrypted_field = gpg.encrypt(json_representation, fingerprints)
             if not encrypted_field.ok:
                 raise Warning(f'Unable to encrypt field. GPG status: {encrypted_field.status}')
-            encrypted_field_dictionary[','.join(fingerprints) if len(fingerprints) > 1 else fingerprints[0]] = encrypted_field._as_text()
-            encrypted_field_list.append(encrypted_field_dictionary)
+            encrypted_message = EncryptedGraphMessage(
+                [PubkeyObject(method= current_keys.key_map[fingerprint]["algo"] , key=fingerprint)
+                    for fingerprint in fingerprints],
+                encrypted_field._as_text(),
+            )
+            encrypted_field_list.append(encrypted_message.output_entity())
         return encrypted_field_list
 
 

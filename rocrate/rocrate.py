@@ -228,17 +228,18 @@ class ROCrate:
         """
         gpg = gnupg.GPG(gpgbinary=self.gpg_binary)
         decrypted_entitites = {}
-        for encrypted_elements in encrypted:
-            for fingerprints, encrypted_block in encrypted_elements.items():
-                decrypted = gpg.decrypt(encrypted_block,  passphrase=self.gpg_passphrase)
-                if not decrypted.ok:
-                    continue
-                decrypted_data = json.loads(decrypted.data)
-                decrypted_dict = {_["@id"]: _ for _ in decrypted_data}
-                for identifier, decrypted_item in decrypted_dict.items():
-                    self.add(encryptedcontextentity.EncryptedContextEntity(self,
-                    identifier, decrypted_item, pubkey_fingerprints=fingerprints.split(",")))
-                decrypted_entitites.update(decrypted_dict)
+        for encrypted_entity in encrypted:
+            encrypted_block = encrypted_entity["encrypted_graph"]
+            fingerprints =  [recipent['@id'] for recipent in encrypted_entity["recipents"]]
+            decrypted = gpg.decrypt(encrypted_block,  passphrase=self.gpg_passphrase)
+            if not decrypted.ok:
+                continue
+            decrypted_data = json.loads(decrypted.data)
+            decrypted_dict = {_["@id"]: _ for _ in decrypted_data}
+            for identifier, decrypted_item in decrypted_dict.items():
+                self.add(encryptedcontextentity.EncryptedContextEntity(self,
+                identifier, decrypted_item, pubkey_fingerprints=fingerprints))
+            decrypted_entitites.update(decrypted_dict)
         return decrypted_entitites
 
 
