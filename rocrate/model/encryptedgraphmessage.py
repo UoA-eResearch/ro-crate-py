@@ -30,7 +30,7 @@ class PubkeyObject(BaseModel):
     """
     method:str
     key:str
-    uid:str
+    uids:List[str]
 
     @property
     def combined(self) -> str:
@@ -68,7 +68,7 @@ class EncryptedGraphMessage():
         else:
             self.action_type = "SendAction"
 
-        self.recipents = [{"@id":fingerprint.key,"algorithim":fingerprint.method, "uid":fingerprint.uid} for
+        self.recipents = [{"@id":fingerprint.key,"algorithim":fingerprint.method, "uid":fingerprint.uids} for
              fingerprint in pubkey_fingerprints]
         self.encrypted_graph = encrypted_graph
 
