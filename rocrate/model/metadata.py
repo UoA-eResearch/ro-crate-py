@@ -139,6 +139,7 @@ class Metadata(File):
                     key=fingerprint)
                     for fingerprint in fingerprints],
                 encrypted_field._as_text(),
+                method="https://doi.org/10.17487/RFC4880",
             )
             encrypted_field_list.append(encrypted_message.output_entity())
         return encrypted_field_list
