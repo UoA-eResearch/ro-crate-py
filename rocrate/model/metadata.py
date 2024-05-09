@@ -134,7 +134,9 @@ class Metadata(File):
             if not encrypted_field.ok:
                 raise Warning(f'Unable to encrypt field. GPG status: {encrypted_field.status}')
             encrypted_message = EncryptedGraphMessage(
-                [PubkeyObject(method= current_keys.key_map[fingerprint]["algo"] , key=fingerprint)
+                [PubkeyObject(method= current_keys.key_map[fingerprint]["algo"],
+                    uid=current_keys.key_map[fingerprint].get("uid") or "",
+                    key=fingerprint)
                     for fingerprint in fingerprints],
                 encrypted_field._as_text(),
             )
