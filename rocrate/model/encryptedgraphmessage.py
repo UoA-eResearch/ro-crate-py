@@ -14,10 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 import uuid
-from pydantic import BaseModel
-
+# from pydantic import BaseModel
+from .contextentity import ContextEntity
 
 class PubkeyObject(BaseModel):
     """Pubkey_Object
@@ -36,7 +36,7 @@ class PubkeyObject(BaseModel):
     def combined(self) -> str:
         return f"{self.key}:{self.method}"
 
-class EncryptedGraphMessage():
+class EncryptedGraphMessage(ContextEntity):
 
     """EncryptedGraphMessage
 
@@ -57,40 +57,58 @@ class EncryptedGraphMessage():
     """
 
     def __init__(self,
+        crate,
         pubkey_fingerprints: List[PubkeyObject],
         encrypted_graph: str,
         identifier:Optional[str] = None,
-        action_type: Optional[str] = None,
+        properties: Optional[Any] = None,
         method: Optional[str] =None,
     ):
         if identifier:
             self.id = str(identifier)
         else:
             self.id = f"#{uuid.uuid4()}"
-        if action_type:
-            self.action_type = action_type
-        else:
-            self.action_type = "SendAction"
 
-        self.recipents = [{"@id":fingerprint.key,"algorithim":fingerprint.method, "uid":fingerprint.uids} for
+        properties["recipents"] = [{"@id":fingerprint.uids} for
+            fingerprint in pubkey_fingerprints]
+
+        properties["recipent_keys"] = [{"@id":fingerprint.key} for
+            fingerprint in pubkey_fingerprints]
+
+        
+        self.recipents = [{"@id":fingerprint.uids} for
              fingerprint in pubkey_fingerprints]
         self.encrypted_graph = encrypted_graph
         self.method = method
+        properties["encryptedGraph"] = encrypted_graph
+        super().__init__(crate, identifier, properties)
 
-    def output_entity(self) -> Dict:
-        """Output the graph entity to be written directly into the crate
 
-        Returns:
-            Dict: the encrypted graph entity's key information to be serialized to json
-        """
-        output_info =  {
-            "@id":self.id,
-            "@type":self.action_type,
-            "recipents":self.recipents,
-            "encrypted_graph":self.encrypted_graph,
-            "sendMethod":self.method,
+    def _empty(self) -> Dict:
+        val = {
+            "@id": self.id,
+            "@type": ["SendAction", "EncryptedGraphMessage"],
             "actionStatus":"PotentialActionStatus"
-            }
-        if self.method:
-            output_info["sendMethod"] = self.method
-        return output_info
+        }
+        return val
+
+
+
+    # def output_entity(self) -> Dict:
+    #     """Output the graph entity to be written directly into the crate
+
+    #     Returns:
+    #         Dict: the encrypted graph entity's key information to be serialized to json
+    #     """
+    #     output_info =  {
+    #         "@id":self.id,
+    #         "@type":self.action_type,
+    #         "recipents":self.recipents,
+    #         "recipent_keys":self.recipent_keys,
+    #         "encrypted_graph":self.encrypted_graph,
+    #         "sendMethod":self.method,
+            
+    #         }
+    #     if self.method:
+    #         output_info["sendMethod"] = self.method
+    #     return output_info
