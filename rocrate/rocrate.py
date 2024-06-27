@@ -52,7 +52,8 @@ from .model import (
     TestService,
     TestSuite,
     WorkflowDescription,
-    encryptedcontextentity
+    encryptedcontextentity,
+    EncryptedGraphMessage
 )
 from .model.computationalworkflow import galaxy_to_abstract_cwl
 from .model.computerlanguage import get_lang
@@ -161,11 +162,10 @@ class ROCrate:
                 metadata_path = source / LegacyMetadata.BASENAME
             if not metadata_path.is_file():
                 raise ValueError(f"Not a valid RO-Crate: missing {Metadata.BASENAME}")
-            _, entities, encrypted = read_metadata(metadata_path)
-            if encrypted:
-                self.__decrypt(encrypted)
+        _, entities = read_metadata(metadata_path)
         self.__read_data_entities(entities, source, gen_preview)
         self.__read_contextual_entities(entities)
+        self.__read_encrypted_entities()
         return source
 
     def __read_data_entities(self, entities, source, gen_preview):
@@ -214,7 +214,12 @@ class ROCrate:
             cls = pick_type(entity, type_map, fallback=ContextEntity)
             self.add(cls(self, identifier, entity))
 
-    def __decrypt(self, encrypted:List[Dict[str,str]]) -> Dict[str, Dict[str, str]]:
+    def __read_encrypted_entities(self):
+        entities=self.get_by_type(["SendAction", "EncryptedGraphMessage"],exact=True)
+        if(entities):
+            self.__decrypt(entities)
+
+    def __decrypt(self, encrypted:List[EncryptedGraphMessage]) -> Dict[str, Dict[str, str]]:
         """Decrypts blocks of encrypted metadata for which the user possesses private keys
         and adds them to the current crate as EncryptedContextEntities.
         
@@ -229,8 +234,8 @@ class ROCrate:
         gpg = gnupg.GPG(gpgbinary=self.gpg_binary)
         decrypted_entitites = {}
         for encrypted_entity in encrypted:
-            encrypted_block = encrypted_entity["encrypted_graph"]
-            fingerprints =  [recipent['@id'] for recipent in encrypted_entity["recipents"]]
+            encrypted_block = encrypted_entity.get("encryptedGraph")
+            fingerprints =  [pubkey for pubkey in encrypted_entity["recipient_keys"]]
             decrypted = gpg.decrypt(encrypted_block,  passphrase=self.gpg_passphrase)
             if not decrypted.ok:
                 continue

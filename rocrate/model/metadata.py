@@ -26,6 +26,7 @@ from gnupg import GPG
 
 from rocrate.model.encryptedcontextentity import EncryptedContextEntity
 from .encryptedgraphmessage import EncryptedGraphMessage, PubkeyObject
+from .contextentity import ContextEntity
 # from rocrate.rocrate import ROCrate
 
 from .dataset import Dataset
@@ -74,6 +75,7 @@ class Metadata(File):
         encrypted_fields = []
         for entity in self.crate.get_entities():
             if isinstance(entity, EncryptedContextEntity):
+                entity.pubkey_fingerprints = entity.combine_recipient_keys()
                 encrypted_fields.append(
                     (entity.properties(), entity.pubkey_fingerprints)
                 )
@@ -81,13 +83,16 @@ class Metadata(File):
                 graph.append(entity.properties())
         encrypted_fields = self.__aggregate_encrypted_fields(encrypted_fields)
         encrypted_data = self.__encrypt_fields(encrypted_fields)
+        reciptents = self.__generate_encryption_recipients(encrypted_data)
+        graph.extend([recipient.properties() for recipient in reciptents])
+        graph.extend([encrypted_graph.properties() for encrypted_graph in encrypted_data])
         context = [f"{self.PROFILE}/context"]
         context.extend(self.extra_contexts)
         if self.extra_terms:
             context.append(self.extra_terms)
         if len(context) == 1:
             context = context[0]
-        return {"@context": context, "@graph": graph, "@encrypted": encrypted_data}
+        return {"@context": context, "@graph": graph}
 
     def __aggregate_encrypted_fields(
         self,
@@ -115,7 +120,7 @@ class Metadata(File):
                 aggregated_fields[pubkey_fingerprints] = [field[0]]
         return aggregated_fields
 
-    def __encrypt_fields(self, encrypted_fields: Dict[List[str],List[Dict[str,str]]],) -> list[str]:
+    def __encrypt_fields(self, encrypted_fields: Dict[List[str],List[Dict[str,str]]],) -> list[EncryptedGraphMessage]:
         """Encrypt the JSON representation of the encrypted fields using the fingerprints provided
         
         Args:
@@ -134,16 +139,41 @@ class Metadata(File):
             if not encrypted_field.ok:
                 raise Warning(f'Unable to encrypt field. GPG status: {encrypted_field.status}')
             encrypted_message = EncryptedGraphMessage(
-                [PubkeyObject(method= current_keys.key_map[fingerprint]["algo"],
+                crate= self.crate,
+                encrypted_graph=encrypted_field._as_text(),
+                 pubkey_fingerprints=[PubkeyObject(method= current_keys.key_map[fingerprint]["algo"],
                     uids =current_keys.key_map[fingerprint].get("uids") or [],
                     key=fingerprint)
                     for fingerprint in fingerprints],
-                encrypted_field._as_text(),
-                method="https://doi.org/10.17487/RFC4880",
+                properties={
+                    "deliveryMethod":"https://doi.org/10.17487/RFC4880"
+                }                
             )
-            encrypted_field_list.append(encrypted_message.output_entity())
+            encrypted_field_list.append(encrypted_message)
         return encrypted_field_list
 
+    def __generate_encryption_recipients(self, encrypted_messages: list[EncryptedGraphMessage]) -> List[ContextEntity]:
+        def recipient_from_fingerprint(pubkeyfingerprint: PubkeyObject) -> ContextEntity:
+            new_recipient = ContextEntity(self.crate, pubkeyfingerprint.uids[0], properties={
+                "@type": "Audiance",
+                "audienceType": "encrypted message recipients",
+                "pubkey_fingerprints": pubkeyfingerprint.key,
+            })
+            if (len(pubkeyfingerprint.uids) > 1):
+                new_recipient["identifer"] = pubkeyfingerprint.uids[1:]
+            return new_recipient
+        recipients = {}
+        for message in encrypted_messages:
+            for fingerprint in  message.pubkey_fingerprints:
+                if recipient := recipients.get(fingerprint.uids[0]):
+                    recipient.append_to("action", message)
+                else:
+                    recipient = recipient_from_fingerprint(fingerprint)
+                    recipients[recipient.id] = recipient
+                    recipient.append_to("action", message)
+        return recipients.values()
+
+            
 
 
     def write(self, base_path):

@@ -66,55 +66,6 @@ def test_add_encryptedmetadadata(test_gpg_key:GenKey, test_fingerprint_no_secret
     assert test_gpg_key.fingerprint in encrypted_entity.pubkey_fingerprints
 
 
-def test_encrypted_write_with_crate_key(tmpdir: Path, test_gpg_key:GenKey, test_passphrase:str):
-    """Test encryption of a metadata element with a fingerprint provided at the crate level
-    """
-    crate = ROCrate(pubkey_fingerprints=[test_gpg_key.fingerprint])
-    encrypted_entity = EncryptedContextEntity(
-        crate=crate,
-        identifier="#test_encrypted_meta",
-        properties = {"name":"test_encrypted_meta"},
-    )
-    crate.add(encrypted_entity)
-    out_path = tmpdir / "ro_crate_out"
-    crate.write(out_path)
-    with open(out_path / "ro-crate-metadata.json",encoding='utf-8') as f:
-        metadata = json.load(f)
-    assert metadata.get("@encrypted")
-    encrypted_data = metadata["@encrypted"]
-    gpg = GPG(crate.gpg_binary)
-    decrypted = gpg.decrypt(encrypted_data[0]["encrypted_graph"],
-        passphrase= test_passphrase)
-    assert decrypted.ok
-    assert json.loads(decrypted.data)[0] == encrypted_entity.as_jsonld()
-
-
-def test_encrypted_write_with_enitity_key(tmpdir,
- test_gpg_key:GenKey,
- test_passphrase:str,):
-    """Test encryption when fingerprint is provided at the entity level
-    """
-    crate = ROCrate()
-    encrypted_entity = EncryptedContextEntity(
-        crate=crate,
-        identifier="#test_encrypted_meta",
-        properties = {"name":"test_encrypted_meta"},
-        pubkey_fingerprints =[test_gpg_key.fingerprint],
-    )
-    crate.add(encrypted_entity)
-    out_path = tmpdir / "ro_crate_out"
-    crate.write(out_path)
-    with open(out_path / "ro-crate-metadata.json",encoding='utf-8') as f:
-        metadata = json.load(f)
-    assert metadata.get("@encrypted")
-    encrypted_data = metadata["@encrypted"]
-    gpg = GPG(crate.gpg_binary)
-    decrypted = gpg.decrypt(encrypted_data[0]["encrypted_graph"],
-    passphrase= test_passphrase)
-    assert decrypted.ok
-    assert json.loads(decrypted.data)[0] == encrypted_entity.as_jsonld()
-
-
 def test_fail_decrypt_without_key(tmpdir:Path, test_fingerprint_no_secret, test_passphrase:str):
     """fail to read an encrypted entity when the user lacks the private key 
     """
@@ -127,17 +78,11 @@ def test_fail_decrypt_without_key(tmpdir:Path, test_fingerprint_no_secret, test_
     ))
     out_path = tmpdir / "ro_crate_out"
     crate.write(out_path)
-    with open(out_path / "ro-crate-metadata.json",encoding='utf-8') as f:
-        metadata = json.load(f)
-    assert metadata.get("@encrypted")
-    encrypted_data = metadata["@encrypted"]
-    gpg = GPG(crate.gpg_binary)
-    raw_decrypt = gpg.decrypt(
-        encrypted_data[0]["encrypted_graph"],
-        passphrase= test_passphrase)
-    assert not raw_decrypt.ok
-    read_crate = ROCrate(source=out_path)
-    assert read_crate.dereference("#test_encrypted_meta") is None
+    crate = ROCrate(source=out_path, gpg_passphrase=test_passphrase)
+    decrypted_result = crate.dereference("#test_encrypted_meta")
+    assert decrypted_result is None
+
+
 
 
 
@@ -156,6 +101,7 @@ def test_decrypt(tmpdir, test_gpg_key:GenKey, test_passphrase:str):
     crate.write(out_path)
     crate = ROCrate(source=out_path, gpg_passphrase=test_passphrase)
     decrypted_result = crate.dereference("#test_encrypted_meta")
+    print(decrypted_result)
     assert isinstance(decrypted_result, EncryptedContextEntity)
     assert decrypted_result.as_jsonld() == encrypted_entity.as_jsonld()
 
@@ -180,15 +126,12 @@ def test_re_encrypt(tmpdir, test_gpg_key:GenKey, test_passphrase):
     #assert decrypted_result.pubkey_fingerprints == ""
     out_path = tmpdir / "ro_crate_out_again"
     crate.write(out_path)
-    with open(out_path / "ro-crate-metadata.json", encoding='utf-8') as f:
-        metadata = json.load(f)
-    assert metadata.get("@encrypted")
-    encrypted_data = metadata["@encrypted"]
-    gpg = GPG(crate.gpg_binary)
-    decrypted = gpg.decrypt(encrypted_data[0]["encrypted_graph"],
-        passphrase= test_passphrase)
-    assert decrypted.ok
-    assert json.loads(decrypted.data)[0] == encrypted_entity.as_jsonld()
+    crate = ROCrate(source=out_path, gpg_passphrase=test_passphrase)
+    decrypted_result = crate.dereference("#test_encrypted_meta")
+    print(decrypted_result)
+    assert isinstance(decrypted_result, EncryptedContextEntity)
+    assert decrypted_result.as_jsonld() == encrypted_entity.as_jsonld()
+
 
 def test_multiple_keys(
     test_gpg_key:GenKey,

@@ -16,7 +16,7 @@
 
 from typing import List, Optional, Dict, Any
 import uuid
-# from pydantic import BaseModel
+from pydantic import BaseModel
 from .contextentity import ContextEntity
 
 class PubkeyObject(BaseModel):
@@ -45,42 +45,37 @@ class EncryptedGraphMessage(ContextEntity):
 
 
     Attributes:
-        pubkey_fingerprints (List[Pubkey_Object]) : the public keys of the recipents.
+        pubkey_fingerprints (List[Pubkey_Object]) : the public keys of the recipients.
         encrypted_graph (str) : the aggregated and encrypted portion of the RO-Crate @graph.
         identifier (Optional[str]) : the identifier of this element in the RO-Crate @encrypted
                 = Default: None,
         action_type: (Optional[str]) : the action as defined in the context e.g.(SendAction)
             = Default: "SendAction",
-        recipents (List[PubkeyObeject]): a list of keys, algorithims and user ids 
+        recipients (List[PubkeyObeject]): a list of keys, algorithims and user ids 
             this block is encrypted to.
         method (Optional[str]) : the message packaging format (e.g. openPGP https://doi.org/10.17487/RFC4880)
     """
 
     def __init__(self,
         crate,
-        pubkey_fingerprints: List[PubkeyObject],
-        encrypted_graph: str,
-        identifier:Optional[str] = None,
+        identifier: Optional[str] = None,
         properties: Optional[Any] = None,
-        method: Optional[str] =None,
+        pubkey_fingerprints: Optional[List[PubkeyObject]] = None,
+        encrypted_graph: Optional[str] = None
     ):
-        if identifier:
-            self.id = str(identifier)
-        else:
-            self.id = f"#{uuid.uuid4()}"
+        if(pubkey_fingerprints):
+            self.pubkey_fingerprints = pubkey_fingerprints
+            properties["recipients"] = [{"@id":fingerprint.uids} for
+                fingerprint in pubkey_fingerprints]
 
-        properties["recipents"] = [{"@id":fingerprint.uids} for
-            fingerprint in pubkey_fingerprints]
-
-        properties["recipent_keys"] = [{"@id":fingerprint.key} for
-            fingerprint in pubkey_fingerprints]
-
+            properties["recipient_keys"] = [{"@id":fingerprint.key} for
+                fingerprint in pubkey_fingerprints]
         
-        self.recipents = [{"@id":fingerprint.uids} for
-             fingerprint in pubkey_fingerprints]
-        self.encrypted_graph = encrypted_graph
-        self.method = method
-        properties["encryptedGraph"] = encrypted_graph
+        if not identifier:
+            keys_name = " ".join(map(str,properties["recipient_keys"]))            
+            identifier = f"#Encrypted-{uuid.uuid5(namespace=uuid.NAMESPACE_URL, name=keys_name)}"
+        if encrypted_graph:
+            properties["encryptedGraph"] = encrypted_graph
         super().__init__(crate, identifier, properties)
 
 
@@ -89,6 +84,7 @@ class EncryptedGraphMessage(ContextEntity):
             "@id": self.id,
             "@type": ["SendAction", "EncryptedGraphMessage"],
             "actionStatus":"PotentialActionStatus"
+            #"conformsTo":"profileURI"
         }
         return val
 
@@ -103,8 +99,8 @@ class EncryptedGraphMessage(ContextEntity):
     #     output_info =  {
     #         "@id":self.id,
     #         "@type":self.action_type,
-    #         "recipents":self.recipents,
-    #         "recipent_keys":self.recipent_keys,
+    #         "recipients":self.recipients,
+    #         "recipient_keys":self.recipient_keys,
     #         "encrypted_graph":self.encrypted_graph,
     #         "sendMethod":self.method,
             

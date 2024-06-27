@@ -19,6 +19,8 @@ from typing import Any, List, Optional
 # from rocrate.rocrate import ROCrate
 
 from .contextentity import ContextEntity
+from .entity import Entity
+from ..utils import get_norm_value
 
 
 class EncryptedContextEntity(ContextEntity):
@@ -48,6 +50,7 @@ class EncryptedContextEntity(ContextEntity):
             fingerprints.update([properties["pubkey_fingerprints"]])
             properties.pop("pubkey_fingerprints")
         self.pubkey_fingerprints = list(fingerprints)
+
         super().__init__(crate, identifier, properties)
 
     def add_key(
@@ -66,3 +69,19 @@ class EncryptedContextEntity(ContextEntity):
         else:
             self.pubkey_fingerprints.extend(pubkey_fingerprints)
         self.pubkey_fingerprints = list(set(self.pubkey_fingerprints))
+
+    def combine_recipient_keys(self) -> list[str]:
+        """Retrun the complete set of all keys found on this entity and it's recipients
+
+        Returns:
+            list[str]: all pubkeyfingerprints of this entity and it's recipients
+        """
+        def get_recipient_keys(entity:Entity) -> list[str]:
+            return get_norm_value(entity,"pubkey_fingerprints") or []
+
+        if recipients := get_norm_value(self, "recipients"):
+            recipient_keys = [get_recipient_keys(entity=self.crate.dereference(recipient)) for recipient in recipients]
+            return list(set(recipient_keys.extend(self.pubkey_fingerprints)))
+        return self.pubkey_fingerprints
+    
+
