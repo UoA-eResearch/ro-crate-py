@@ -81,7 +81,6 @@ class ROCrate:
         gen_preview=False,
         init=False,
         exclude=None,
-        pubkey_fingerprints: Optional[List[str]] = None,
         gpg_binary: Optional[str] = None,
         gpg_passphrase: Optional[str] = None
     ):
@@ -94,7 +93,6 @@ class ROCrate:
         self.preview = None
         if gen_preview:
             self.add(Preview(self))
-        self.pubkey_fingerprints = pubkey_fingerprints
         if gpg_binary:
             self.gpg_binary = gpg_binary
         elif platform in ["linux", "linux2"]:
@@ -762,6 +760,11 @@ class ROCrate:
             if suite is None:
                 raise ValueError("suite not found")
         return suite
+    
+    def retreive_gpg_keys(self):
+        keyholders = self.get_by_type(["ContactPoint", "EncryptionKeyholder"], True)
+        gpg = gnupg.GPG(gpgbinary=self.gpg_binary)
+        _ = [keyholder.retreive_keys(gpg) for keyholder in keyholders if isinstance(keyholder, Keyholder)]
 
 
 def make_workflow_rocrate(
@@ -780,3 +783,4 @@ def make_workflow_rocrate(
     for file_entry in include_files:
         wf_crate.add_file(file_entry)
     return wf_crate
+    

@@ -38,9 +38,7 @@ class EncryptedContextEntity(ContextEntity):
         crate,
         identifier: Optional[Any] = None,
         properties: Optional[Any] = None,
-        pubkey_fingerprints: Optional[List[str]] = None,
     ) -> None:
-        self.pubkey_fingerprints = []
         fingerprints = set()
         if pubkey_fingerprints:
             fingerprints.update(pubkey_fingerprints)
@@ -50,36 +48,3 @@ class EncryptedContextEntity(ContextEntity):
         self.pubkey_fingerprints = list(fingerprints)
 
         super().__init__(crate, identifier, properties)
-
-    def add_key(
-        self,
-        pubkey_fingerprints: str | List[str],
-    ) -> None:
-        """Function to add a new encryption key to the entity
-
-        Args:
-            key (str|List[str]): The 'fingerprint' of a GPG public key or a list of fingerprints
-                for multiple keys.
-                Refer(https://pypi.org/project/python-gnupg/) for more details.
-        """
-        if isinstance(pubkey_fingerprints, str):
-            self.pubkey_fingerprints.append(pubkey_fingerprints)
-        else:
-            self.pubkey_fingerprints.extend(pubkey_fingerprints)
-        self.pubkey_fingerprints = list(set(self.pubkey_fingerprints))
-
-    def combine_recipient_keys(self) -> list[str]:
-        """Retrun the complete set of all keys found on this entity and it's recipients
-
-        Returns:
-            list[str]: all pubkeyfingerprints of this entity and it's recipients
-        """
-        def get_recipient_keys(entity:Entity) -> list[str]:
-            return get_norm_value(entity,"pubkey_fingerprints") or []
-
-        if recipients := get_norm_value(self, "recipients"):
-            recipient_keys = [get_recipient_keys(entity=self.crate.dereference(recipient)) for recipient in recipients]
-            list(set(recipient_keys.extend(self.pubkey_fingerprints)))
-        return self.pubkey_fingerprints
-    
-

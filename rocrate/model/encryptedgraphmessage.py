@@ -19,23 +19,6 @@ import uuid
 from pydantic import BaseModel
 from .contextentity import ContextEntity
 
-class PubkeyObject(BaseModel):
-    """Pubkey_Object
-
-    A class for holding public key information as it will be written into the RO-Crate
-
-    Attributes:
-        method(str):the algorithim used to generate the key
-        key(str): the public key or it's fingerprint
-    """
-    method:str
-    key:str
-    uids:List[str]
-
-    @property
-    def combined(self) -> str:
-        return f"{self.key}:{self.method}"
-
 class EncryptedGraphMessage(ContextEntity):
 
     """EncryptedGraphMessage
@@ -60,17 +43,8 @@ class EncryptedGraphMessage(ContextEntity):
         crate,
         identifier: Optional[str] = None,
         properties: Optional[Any] = None,
-        pubkey_fingerprints: Optional[List[PubkeyObject]] = None,
         encrypted_graph: Optional[str] = None
     ):
-        if(pubkey_fingerprints):
-            self.pubkey_fingerprints = pubkey_fingerprints
-            properties["recipients"] = [{"@id":fingerprint.uids} for
-                fingerprint in pubkey_fingerprints]
-
-            properties["recipient_keys"] = [{"@id":fingerprint.key} for
-                fingerprint in pubkey_fingerprints]
-        
         if not identifier:
             keys_name = " ".join(map(str,properties["recipient_keys"]))            
             identifier = f"#Encrypted-{uuid.uuid5(namespace=uuid.NAMESPACE_URL, name=keys_name)}"
@@ -89,22 +63,3 @@ class EncryptedGraphMessage(ContextEntity):
         return val
 
 
-
-    # def output_entity(self) -> Dict:
-    #     """Output the graph entity to be written directly into the crate
-
-    #     Returns:
-    #         Dict: the encrypted graph entity's key information to be serialized to json
-    #     """
-    #     output_info =  {
-    #         "@id":self.id,
-    #         "@type":self.action_type,
-    #         "recipients":self.recipients,
-    #         "recipient_keys":self.recipient_keys,
-    #         "encrypted_graph":self.encrypted_graph,
-    #         "sendMethod":self.method,
-            
-    #         }
-    #     if self.method:
-    #         output_info["sendMethod"] = self.method
-    #     return output_info

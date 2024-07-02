@@ -27,6 +27,7 @@ from gnupg import GPG
 from rocrate.model.encryptedcontextentity import EncryptedContextEntity
 from .encryptedgraphmessage import EncryptedGraphMessage, PubkeyObject
 from .contextentity import ContextEntity
+from ..encryption_utils import combine_recipient_keys
 # from rocrate.rocrate import ROCrate
 
 from .dataset import Dataset
@@ -75,16 +76,14 @@ class Metadata(File):
         encrypted_fields = []
         for entity in self.crate.get_entities():
             if isinstance(entity, EncryptedContextEntity):
-                entity.pubkey_fingerprints = entity.combine_recipient_keys()
+                entity.pubkey_fingerprints = combine_recipient_keys(entity)
                 encrypted_fields.append(
-                    (entity.properties(), entity.pubkey_fingerprints)
+                    (entity, entity.pubkey_fingerprints)
                 )
             else:
                 graph.append(entity.properties())
         encrypted_fields = self.__aggregate_encrypted_fields(encrypted_fields)
         encrypted_data = self.__encrypt_fields(encrypted_fields)
-        reciptents = self.__generate_encryption_recipients(encrypted_data)
-        graph.extend([recipient.properties() for recipient in reciptents])
         graph.extend([encrypted_graph.properties() for encrypted_graph in encrypted_data])
         context = [f"{self.PROFILE}/context"]
         context.extend(self.extra_contexts)
@@ -111,8 +110,6 @@ class Metadata(File):
         aggregated_fields = {}
         for field in encrypted_fields:
             pubkey_fingerprints = field[1]
-            if self.crate.pubkey_fingerprints:
-                pubkey_fingerprints.extend(self.crate.pubkey_fingerprints)
             pubkey_fingerprints = tuple(set(pubkey_fingerprints))  # strip out duplicates
             if pubkey_fingerprints in aggregated_fields:
                 aggregated_fields[pubkey_fingerprints].append(field[0])
@@ -120,7 +117,7 @@ class Metadata(File):
                 aggregated_fields[pubkey_fingerprints] = [field[0]]
         return aggregated_fields
 
-    def __encrypt_fields(self, encrypted_fields: Dict[List[str],List[Dict[str,str]]],) -> list[EncryptedGraphMessage]:
+    def __encrypt_fields(self, encrypted_fields: Dict[List[str],List[EncryptedContextEntity]],) -> list[EncryptedGraphMessage]:
         """Encrypt the JSON representation of the encrypted fields using the fingerprints provided
         
         Args:
@@ -132,48 +129,26 @@ class Metadata(File):
         encrypted_field_list = []
         gpg = GPG(gpgbinary=self.crate.gpg_binary)
         for fingerprints, fields in encrypted_fields.items():
-            json_representation = json.dumps(fields)
+            recipents = set()
+            feilds_properties = []
+            for feild in feilds:
+                recipents.extend([field.get_norm_value("recipients") for feild in feilds])
+                feilds_properties.extend(feild.properties())
+            json_representation = json.dumps(feilds_properties)
             gpg.trust_keys(fingerprints, 'TRUST_ULTIMATE')
-            current_keys = gpg.list_keys()
             encrypted_field = gpg.encrypt(json_representation, fingerprints)
             if not encrypted_field.ok:
                 raise Warning(f'Unable to encrypt field. GPG status: {encrypted_field.status}')
             encrypted_message = EncryptedGraphMessage(
                 crate= self.crate,
                 encrypted_graph=encrypted_field._as_text(),
-                 pubkey_fingerprints=[PubkeyObject(method= current_keys.key_map[fingerprint]["algo"],
-                    uids =current_keys.key_map[fingerprint].get("uids") or [],
-                    key=fingerprint)
-                    for fingerprint in fingerprints],
                 properties={
-                    "deliveryMethod":"https://doi.org/10.17487/RFC4880"
+                    "deliveryMethod":"https://doi.org/10.17487/RFC4880",
+                    "recipients": [{"@id":recipent} for recipient in recipients]
                 }                
             )
             encrypted_field_list.append(encrypted_message)
-        return encrypted_field_list
-
-    def __generate_encryption_recipients(self, encrypted_messages: list[EncryptedGraphMessage]) -> List[ContextEntity]:
-        def recipient_from_fingerprint(pubkeyfingerprint: PubkeyObject) -> ContextEntity:
-            new_recipient = ContextEntity(self.crate, pubkeyfingerprint.uids[0], properties={
-                "@type": "Audience",
-                "audienceType": "encrypted message recipients",
-                "pubkey_fingerprints": pubkeyfingerprint.key,
-            })
-            if (len(pubkeyfingerprint.uids) > 1):
-                new_recipient["identifer"] = pubkeyfingerprint.uids[1:]
-            return new_recipient
-        recipients = {}
-        for message in encrypted_messages:
-            for fingerprint in  message.pubkey_fingerprints:
-                if recipient := recipients.get(fingerprint.uids[0]):
-                    recipient.append_to("action", message)
-                else:
-                    recipient = recipient_from_fingerprint(fingerprint)
-                    recipients[recipient.id] = recipient
-                    recipient.append_to("action", message)
-        return recipients.values()
-
-            
+        return encrypted_field_list         
 
 
     def write(self, base_path):

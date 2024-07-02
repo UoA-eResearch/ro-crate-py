@@ -17,15 +17,36 @@ from . import ContextEntity
 from . import PubkeyObject
 from gnupg import GPG
 
+class PubkeyObject(BaseModel):
+    """Pubkey_Object
+
+    A class for holding public key information as it will be written into the RO-Crate
+
+    Attributes:
+        method(str):the algorithim used to generate the key
+        key(str): the public key or it's fingerprint
+        uids: Identifiers from gpg 'uids' value
+    """
+    #values can be retreived from gpg.list_keys()
+    method:str #algo
+    key:str #key
+    uids:List[str] #uids
+
+    @property
+    def combined(self) -> str:
+        return f"{self.key}:{self.method}"
+
+
 def split_uid(uid: str) -> Tuple[str, str]:
     uid_sections = uid.split(" ")
     if len(uid_sections) > 1:
         email = uid_sections[-1].strip("<> ")
-        user = uid_sections[:-1].strip(" ")
+        user = (" ".join.uid_sections[:-1]).strip(" ")
         return user, email
     return uid, ""
 
-class EncryptionKeyholder(ContextEntity):
+
+class Keyholder(ContextEntity):
 
     HPK_STUB = "/pks/lookup?op=index&exact=true&search="
 
@@ -59,7 +80,6 @@ class EncryptionKeyholder(ContextEntity):
         if pubkeys := self.get("pubkey_fingerprints"):
             if keyserver := self.get("keyserver"):
                 gpg.recv_keys(keyserver, pubkeys)
-
 
     def _empty(self) -> Dict:
         val = {
