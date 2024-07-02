@@ -16,8 +16,6 @@
 
 from typing import Any, List, Optional
 
-# from rocrate.rocrate import ROCrate
-
 from .contextentity import ContextEntity
 from .entity import Entity
 from ..utils import get_norm_value
@@ -81,7 +79,7 @@ class EncryptedContextEntity(ContextEntity):
 
         if recipients := get_norm_value(self, "recipients"):
             recipient_keys = [get_recipient_keys(entity=self.crate.dereference(recipient)) for recipient in recipients]
-            return list(set(recipient_keys.extend(self.pubkey_fingerprints)))
+            list(set(recipient_keys.extend(self.pubkey_fingerprints)))
         return self.pubkey_fingerprints
     
 

@@ -72,4 +72,5 @@ __all__ = [
     "EncryptedGraphMessage",
     "PubkeyObject",
     "EncryptedContextEntity"
+    "EncryptionKeyholder"
 ]

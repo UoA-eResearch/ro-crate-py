@@ -55,7 +55,7 @@ class Metadata(File):
             properties=properties,
         )
         # https://www.researchobject.org/ro-crate/1.1/appendix/jsonld.html#extending-ro-crate
-        self.extra_contexts = []
+        self.extra_contexts = []#extend the crate with another profile
         self.extra_terms = {}
 
     def _empty(self):
@@ -155,7 +155,7 @@ class Metadata(File):
     def __generate_encryption_recipients(self, encrypted_messages: list[EncryptedGraphMessage]) -> List[ContextEntity]:
         def recipient_from_fingerprint(pubkeyfingerprint: PubkeyObject) -> ContextEntity:
             new_recipient = ContextEntity(self.crate, pubkeyfingerprint.uids[0], properties={
-                "@type": "Audiance",
+                "@type": "Audience",
                 "audienceType": "encrypted message recipients",
                 "pubkey_fingerprints": pubkeyfingerprint.key,
             })
