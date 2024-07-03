@@ -45,9 +45,6 @@ class EncryptedGraphMessage(ContextEntity):
         properties: Optional[Any] = None,
         encrypted_graph: Optional[str] = None
     ):
-        if not identifier:
-            keys_name = " ".join(map(str,properties["recipient_keys"]))            
-            identifier = f"#Encrypted-{uuid.uuid5(namespace=uuid.NAMESPACE_URL, name=keys_name)}"
         if encrypted_graph:
             properties["encryptedGraph"] = encrypted_graph
         super().__init__(crate, identifier, properties)

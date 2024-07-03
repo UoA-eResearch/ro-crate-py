@@ -39,12 +39,4 @@ class EncryptedContextEntity(ContextEntity):
         identifier: Optional[Any] = None,
         properties: Optional[Any] = None,
     ) -> None:
-        fingerprints = set()
-        if pubkey_fingerprints:
-            fingerprints.update(pubkey_fingerprints)
-        if properties and properties.get("pubkey_fingerprints"):
-            fingerprints.update([properties["pubkey_fingerprints"]])
-            properties.pop("pubkey_fingerprints")
-        self.pubkey_fingerprints = list(fingerprints)
-
         super().__init__(crate, identifier, properties)

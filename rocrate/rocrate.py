@@ -52,8 +52,9 @@ from .model import (
     TestService,
     TestSuite,
     WorkflowDescription,
-    encryptedcontextentity,
-    EncryptedGraphMessage
+    EncryptedContextEntity,
+    EncryptedGraphMessage,
+    Keyholder
 )
 from .model.computationalworkflow import galaxy_to_abstract_cwl
 from .model.computerlanguage import get_lang
@@ -233,15 +234,14 @@ class ROCrate:
         decrypted_entitites = {}
         for encrypted_entity in encrypted:
             encrypted_block = encrypted_entity.get("encryptedGraph")
-            fingerprints =  [pubkey for pubkey in encrypted_entity["recipient_keys"]]
             decrypted = gpg.decrypt(encrypted_block,  passphrase=self.gpg_passphrase)
             if not decrypted.ok:
                 continue
             decrypted_data = json.loads(decrypted.data)
             decrypted_dict = {_["@id"]: _ for _ in decrypted_data}
             for identifier, decrypted_item in decrypted_dict.items():
-                self.add(encryptedcontextentity.EncryptedContextEntity(self,
-                identifier, decrypted_item, pubkey_fingerprints=fingerprints))
+                self.add(EncryptedContextEntity(crate=self,
+                identifier=identifier, properties=decrypted_item))
             decrypted_entitites.update(decrypted_dict)
         return decrypted_entitites
 

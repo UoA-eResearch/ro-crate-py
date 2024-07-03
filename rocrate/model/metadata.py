@@ -25,9 +25,10 @@ from typing import List, Dict, Tuple
 from gnupg import GPG
 
 from rocrate.model.encryptedcontextentity import EncryptedContextEntity
-from .encryptedgraphmessage import EncryptedGraphMessage, PubkeyObject
+from .encryptedgraphmessage import EncryptedGraphMessage
 from .contextentity import ContextEntity
 from ..encryption_utils import combine_recipient_keys
+from ..utils import get_norm_value
 # from rocrate.rocrate import ROCrate
 
 from .dataset import Dataset
@@ -129,22 +130,24 @@ class Metadata(File):
         encrypted_field_list = []
         gpg = GPG(gpgbinary=self.crate.gpg_binary)
         for fingerprints, fields in encrypted_fields.items():
-            recipents = set()
-            feilds_properties = []
-            for feild in feilds:
-                recipents.extend([field.get_norm_value("recipients") for feild in feilds])
-                feilds_properties.extend(feild.properties())
-            json_representation = json.dumps(feilds_properties)
+            recipients = set()
+            fields_properties = []
+            for field in fields:
+                recipients.update([tuple(recipient) for recipient in [get_norm_value(field, "recipients") for feild in fields]])
+                fields_properties.append(field.properties())
+            json_representation = json.dumps(fields_properties)
             gpg.trust_keys(fingerprints, 'TRUST_ULTIMATE')
             encrypted_field = gpg.encrypt(json_representation, fingerprints)
             if not encrypted_field.ok:
                 raise Warning(f'Unable to encrypt field. GPG status: {encrypted_field.status}')
             encrypted_message = EncryptedGraphMessage(
                 crate= self.crate,
+                identifier=f"Encrypted_Message{"_".join(fingerprints)}",
                 encrypted_graph=encrypted_field._as_text(),
                 properties={
                     "deliveryMethod":"https://doi.org/10.17487/RFC4880",
-                    "recipients": [{"@id":recipent} for recipient in recipients]
+                    "recipients": [{"@id":recipient} for recipient in recipients]
+                    
                 }                
             )
             encrypted_field_list.append(encrypted_message)

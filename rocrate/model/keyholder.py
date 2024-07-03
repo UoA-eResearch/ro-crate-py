@@ -14,8 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from . import ContextEntity
-from . import PubkeyObject
 from gnupg import GPG
+from pydantic import BaseModel
+from typing import List, Tuple, Optional, Any, Dict
+
+
+HPK_STUB = "/pks/lookup?op=index&exact=true&search="
 
 class PubkeyObject(BaseModel):
     """Pubkey_Object
@@ -37,18 +41,18 @@ class PubkeyObject(BaseModel):
         return f"{self.key}:{self.method}"
 
 
-def split_uid(uid: str) -> Tuple[str, str]:
+def split_uid(uid: str) -> Dict[str, str]:
     uid_sections = uid.split(" ")
     if len(uid_sections) > 1:
         email = uid_sections[-1].strip("<> ")
-        user = (" ".join.uid_sections[:-1]).strip(" ")
-        return user, email
-    return uid, ""
+        user = (" ".join(uid_sections[:-1])).strip(" ")
+        return (user, email)
+    return (uid, "")
 
 
 class Keyholder(ContextEntity):
 
-    HPK_STUB = "/pks/lookup?op=index&exact=true&search="
+    
 
     def __init__(
             self,
@@ -58,16 +62,17 @@ class Keyholder(ContextEntity):
             pubkey_fingerprint: Optional[PubkeyObject] = None,
             keyserver:Optional[str] = None
         ) -> None:
+            properties = {}
             if not identifier:
-                if len(pubkey_fingerprints > 0):
+                if pubkey_fingerprint:
                     if keyserver:
                         identifier = f"{keyserver}{HPK_STUB}{pubkey_fingerprint.key}"
                     else:
-                        identifier = pubkey_fingerprints[0]
+                        identifier = pubkey_fingerprint.key
                 else:
                     raise ValueError(f"No valid identifier combination supplied for keyholder")
             if pubkey_fingerprint:
-                names, emails = [split_uid(uid) for uid in pubkey_fingerprint.uids]
+                names, emails =  zip(*[split_uid(uid) for uid in pubkey_fingerprint.uids])
                 properties["pubkey_fingerprints"] = pubkey_fingerprint.key
                 properties["email"] = [email for email in emails if email != ""]
                 properties["name"] = names
