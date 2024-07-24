@@ -21,18 +21,21 @@
 
 import json
 from pathlib import Path
-from typing import List, Dict, Tuple
+from typing import Dict, List, Tuple
+
 from gnupg import GPG
 
 from rocrate.model.encryptedcontextentity import EncryptedContextEntity
-from .encryptedgraphmessage import EncryptedGraphMessage
-from .contextentity import ContextEntity
+
 from ..encryption_utils import combine_recipient_keys
 from ..utils import get_norm_value
+from .contextentity import ContextEntity
+from .dataset import Dataset
+from .encryptedgraphmessage import EncryptedGraphMessage
+from .file import File
+
 # from rocrate.rocrate import ROCrate
 
-from .dataset import Dataset
-from .file import File
 
 WORKFLOW_PROFILE = "https://w3id.org/workflowhub/workflow-ro-crate/1.0"
 

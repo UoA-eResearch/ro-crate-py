@@ -1,13 +1,15 @@
-
-
-from .model import Entity, keyholder
-from .utils import get_norm_value
+#utilities for use in encryption and key management
 from typing import Optional
+
+from .model import Entity
+from .utils import get_norm_value
+
 
 class NoValidKeysError(ValueError):
     "Raised if encrypting or sigining and no valid public/private keys are avaibale"
     def __init__(self, message):            
         super().__init__(message)
+        self.message=message
     def __str__(self):
         return f'No target has a valid public key for encryption.{self.message}'
 
@@ -17,10 +19,10 @@ class MissingMemberException(Exception):
     def __init__(self, message):            
         super().__init__(message)
     def __str__(self):
-        return f'At least one target lacks a valid key, or cannot be found in the graph'
+        return 'At least one target lacks a valid key, or cannot be found in the graph'
 
 def combine_recipient_keys(target_entity: Entity, allow_missing: Optional[bool]=False) -> list[str]:
-    """Retrun the complete set of all keys found on this entity and it's recipients
+    """Return the complete set of all keys found on this entity and it's recipients
 
     Returns:
         list[str]: all pubkeyfingerprints of this entity and it's recipients

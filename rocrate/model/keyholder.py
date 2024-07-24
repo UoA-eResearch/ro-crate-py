@@ -13,11 +13,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from . import ContextEntity
+from typing import Any, Dict, List, Optional, Tuple
+
 from gnupg import GPG
 from pydantic import BaseModel
-from typing import List, Tuple, Optional, Any, Dict
 
+from . import ContextEntity
 
 HPK_STUB = "/pks/lookup?op=index&exact=true&search="
 
@@ -62,7 +63,7 @@ class Keyholder(ContextEntity):
             pubkey_fingerprint: Optional[PubkeyObject] = None,
             keyserver:Optional[str] = None
         ) -> None:
-            properties = {}
+            properties = properties or {}
             if not identifier:
                 if pubkey_fingerprint:
                     if keyserver:

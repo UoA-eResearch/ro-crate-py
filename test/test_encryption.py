@@ -1,17 +1,19 @@
 """Tests the encryption of elements in the RO-Crate"""
-import json
 from pathlib import Path
-from contextlib import suppress
-import pytest
 
+import pytest
 from gnupg import GPG, GenKey
 
-
-from rocrate.rocrate import ROCrate
+from rocrate.encryption_utils import (
+    MissingMemberException,
+    NoValidKeysError,
+    combine_recipient_keys
+    )
+from rocrate.model.contextentity import ContextEntity
 from rocrate.model.encryptedcontextentity import EncryptedContextEntity
 from rocrate.model.keyholder import Keyholder, PubkeyObject
-from rocrate.encryption_utils import combine_recipient_keys, NoValidKeysError, MissingMemberException
-from rocrate.model.contextentity import ContextEntity
+from rocrate.rocrate import ROCrate
+
 
 def test_confrim_gpg_binary():
     crate = ROCrate()
@@ -224,7 +226,7 @@ def test_multiple_keys(
     )
     test_recipient = ContextEntity(
         crate=crate,
-        identifier="test_recipent",
+        identifier="test_recipient",
         properties={
             "pubkey_fingerprints":test_gpg_key_2.fingerprint
         }

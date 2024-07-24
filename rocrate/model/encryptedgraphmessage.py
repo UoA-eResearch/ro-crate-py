@@ -14,10 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Dict, Any
 import uuid
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel
+
 from .contextentity import ContextEntity
+
 
 class EncryptedGraphMessage(ContextEntity):
 
@@ -28,15 +31,7 @@ class EncryptedGraphMessage(ContextEntity):
 
 
     Attributes:
-        pubkey_fingerprints (List[Pubkey_Object]) : the public keys of the recipients.
         encrypted_graph (str) : the aggregated and encrypted portion of the RO-Crate @graph.
-        identifier (Optional[str]) : the identifier of this element in the RO-Crate @encrypted
-                = Default: None,
-        action_type: (Optional[str]) : the action as defined in the context e.g.(SendAction)
-            = Default: "SendAction",
-        recipients (List[PubkeyObeject]): a list of keys, algorithims and user ids 
-            this block is encrypted to.
-        method (Optional[str]) : the message packaging format (e.g. openPGP https://doi.org/10.17487/RFC4880)
     """
 
     def __init__(self,

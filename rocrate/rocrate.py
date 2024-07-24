@@ -240,8 +240,10 @@ class ROCrate:
             decrypted_data = json.loads(decrypted.data)
             decrypted_dict = {_["@id"]: _ for _ in decrypted_data}
             for identifier, decrypted_item in decrypted_dict.items():
-                self.add(EncryptedContextEntity(crate=self,
+                decrypted_entity : ContextEntity = self.add(EncryptedContextEntity(crate=self,
                 identifier=identifier, properties=decrypted_item))
+            if decrypted_entity.type is ["SendAction", "EncryptedGraphMessage"]:
+                encrypted.append(decrypted_entity)
             decrypted_entitites.update(decrypted_dict)
         return decrypted_entitites
 

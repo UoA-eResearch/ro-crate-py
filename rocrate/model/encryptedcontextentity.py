@@ -16,9 +16,9 @@
 
 from typing import Any, List, Optional
 
+from ..utils import get_norm_value
 from .contextentity import ContextEntity
 from .entity import Entity
-from ..utils import get_norm_value
 
 
 class EncryptedContextEntity(ContextEntity):
