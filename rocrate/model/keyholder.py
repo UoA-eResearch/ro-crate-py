@@ -15,12 +15,15 @@
 # limitations under the License.
 from typing import Any, Dict, List, Optional, Tuple
 
+import re
 from gnupg import GPG
 from pydantic import BaseModel
 
 from . import ContextEntity
 
 HPK_STUB = "/pks/lookup?op=index&exact=true&search="
+EMAIL_RE = re.compile(r"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)")
+NO_VALID_EMAIL = "No Valid Email"
 
 class PubkeyObject(BaseModel):
     """Pubkey_Object
@@ -43,17 +46,21 @@ class PubkeyObject(BaseModel):
 
 
 def split_uid(uid: str) -> Dict[str, str]:
+    """split supplied uids from gpg's key information into email and name"""
     uid_sections = uid.split(" ")
-    if len(uid_sections) > 1:
+    if len(uid_sections) > 1: #split if uid contains two entries
         email = uid_sections[-1].strip("<> ")
         user = (" ".join(uid_sections[:-1])).strip(" ")
-        return (user, email)
-    return (uid, "")
+    else:#email and name may be the same
+        email = uid
+        user = uid
+    if not EMAIL_RE.match(email):
+        return (uid, NO_VALID_EMAIL)
+    return (user, email)
 
 
-class Keyholder(ContextEntity):
 
-    
+class Keyholder(ContextEntity):   
 
     def __init__(
             self,
@@ -75,7 +82,7 @@ class Keyholder(ContextEntity):
             if pubkey_fingerprint:
                 names, emails =  zip(*[split_uid(uid) for uid in pubkey_fingerprint.uids])
                 properties["pubkey_fingerprints"] = pubkey_fingerprint.key
-                properties["email"] = [email for email in emails if email != ""]
+                properties["email"] = emails
                 properties["name"] = names
             if keyserver:
                 properties["keyserver"] = keyserver
