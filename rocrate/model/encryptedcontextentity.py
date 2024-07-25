@@ -19,6 +19,7 @@ from typing import Any, List, Optional
 from ..utils import get_norm_value
 from .contextentity import ContextEntity
 from .entity import Entity
+from typing import Dict
 
 
 class EncryptedContextEntity(ContextEntity):
@@ -40,3 +41,12 @@ class EncryptedContextEntity(ContextEntity):
         properties: Optional[Any] = None,
     ) -> None:
         super().__init__(crate, identifier, properties)
+
+    def _empty(self) -> Dict:
+        val = {
+            "@id": self.id,
+            "@type":"Thing",
+            "ToBeEncrypted":True
+            #"conformsTo":"profileURI"
+        }
+        return val

@@ -79,7 +79,7 @@ class Metadata(File):
         graph = []
         encrypted_fields = []
         for entity in self.crate.get_entities():
-            if isinstance(entity, EncryptedContextEntity):
+            if isinstance(entity, EncryptedContextEntity) or entity.get("toBeEncrypted"):
                 entity.pubkey_fingerprints = combine_recipient_keys(entity)
                 encrypted_fields.append(
                     (entity, entity.pubkey_fingerprints)
@@ -149,8 +149,7 @@ class Metadata(File):
                 encrypted_graph=encrypted_field._as_text(),
                 properties={
                     "deliveryMethod":"https://doi.org/10.17487/RFC4880",
-                    "recipients": [{"@id":recipient} for recipient in recipients]
-                    
+                    "recipients": [{"@id":recipient} for recipient in [recipient_set for recipient_set in recipients]]
                 }                
             )
             encrypted_field_list.append(encrypted_message)

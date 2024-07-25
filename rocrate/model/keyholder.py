@@ -52,8 +52,8 @@ def split_uid(uid: str) -> Dict[str, str]:
         email = uid_sections[-1].strip("<> ")
         user = (" ".join(uid_sections[:-1])).strip(" ")
     else:#email and name may be the same
-        email = uid
-        user = uid
+        user = uid.strip("<> ")
+        email = user
     if not EMAIL_RE.match(email):
         return (uid, NO_VALID_EMAIL)
     return (user, email)
