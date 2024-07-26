@@ -16,6 +16,7 @@
 from typing import Any, Dict, List, Optional, Tuple
 
 import re
+import warnings
 from gnupg import GPG
 from pydantic import BaseModel
 
@@ -24,6 +25,9 @@ from . import ContextEntity
 HPK_STUB = "/pks/lookup?op=index&exact=true&search="
 EMAIL_RE = re.compile(r"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)")
 NO_VALID_EMAIL = "No Valid Email"
+
+class KeyserverWarning(Warning):
+    pass
 
 class PubkeyObject(BaseModel):
     """Pubkey_Object
@@ -92,7 +96,15 @@ class Keyholder(ContextEntity):
     def retreive_keys(self, gpg: GPG):
         if pubkeys := self.get("pubkey_fingerprints"):
             if keyserver := self.get("keyserver"):
-                gpg.recv_keys(keyserver, pubkeys)
+                results = gpg.recv_keys(keyserver, pubkeys)
+                result_list = results.results
+                if len(result_list) < 1:
+                    return None
+                for result in results.results:
+                    if result.get("problem"):
+                        warnings.warn(f"invalid response from keyserver for keys {result.get("fingerprint")}: {result.get("text")} - return code: {results.returncode}", KeyserverWarning)
+                return results.fingerprints
+        return None
 
     def _empty(self) -> Dict:
         val = {

@@ -2,7 +2,9 @@
 from pathlib import Path
 
 import pytest
-from gnupg import GPG, GenKey
+import mock
+import warnings
+from gnupg import GPG, GenKey, ImportResult
 
 from rocrate.encryption_utils import (
     MissingMemberException,
@@ -11,7 +13,7 @@ from rocrate.encryption_utils import (
     )
 from rocrate.model.contextentity import ContextEntity
 from rocrate.model.encryptedcontextentity import EncryptedContextEntity
-from rocrate.model.keyholder import Keyholder, PubkeyObject
+from rocrate.model.keyholder import Keyholder, PubkeyObject, split_uid, NO_VALID_EMAIL, KeyserverWarning
 from rocrate.rocrate import ROCrate
 
 
@@ -19,6 +21,9 @@ def test_confrim_gpg_binary():
     crate = ROCrate()
     assert crate.gpg_binary is not None
 
+@pytest.fixture
+def test_keyserver() -> str:
+    return "keyserver.ubuntu.com"
 
 #Fixtures specific to testing gpg keys and decryption
 @pytest.fixture
@@ -45,7 +50,9 @@ def test_gpg_key(test_gpg_object: GPG, test_passphrase:str):
 def test_gpg_key_2(test_gpg_object: GPG, test_passphrase:str):
     key_input = test_gpg_object.gen_key_input(key_type="RSA",
      key_length=1024,Passphrase=test_passphrase,
-     key_usage='sign encrypt')
+     key_usage='sign encrypt',
+     Name_Real = "Joe Tester",
+     Name_Email = "joe@foo.bar")
     key = test_gpg_object.gen_key(key_input)
     yield key
     test_gpg_object.delete_keys(key.fingerprint, True, passphrase=test_passphrase)
@@ -69,7 +76,7 @@ def test_pubkey_nosecret(test_gpg_object: GPG, test_gpg_key) -> PubkeyObject:
     return PubkeyObject(
         method="1",
         key="643BE0B0159AEFC2B9428D578533F9C66A9E7628",
-        uids=[""]
+        uids=["Josiah Carberry <jcarberry@potterymail.com>", "<test@email.com>", "name noemail"]
     )
 
 
@@ -252,3 +259,77 @@ def test_multiple_keys(
     crate = ROCrate(source=out_path, gpg_passphrase=test_passphrase)
     assert not crate.dereference("#test_encrypted_meta_a")
     assert crate.dereference("#test_encrypted_meta_b")
+
+def test_split_uid(test_gpg_key_2:GenKey, test_gpg_object):
+    key_data = test_gpg_object.list_keys().key_map.get(test_gpg_key_2.fingerprint)
+    assert key_data is not None
+    key_from_gpg = PubkeyObject(method = key_data["algo"], key=test_gpg_key_2.fingerprint, uids=key_data["uids"])
+    assert key_from_gpg.uids == ["Joe Tester <joe@foo.bar>"]
+    assert split_uid(key_from_gpg.uids[0]) == ("Joe Tester", "joe@foo.bar")
+
+def test_split_uid_list(test_pubkey_nosecret):
+    names, emails = zip(*[split_uid(uid) for uid in test_pubkey_nosecret.uids])
+    assert names == ("Josiah Carberry", "test@email.com", "name noemail")
+    assert emails == ("jcarberry@potterymail.com", "test@email.com", NO_VALID_EMAIL)
+
+@pytest.fixture
+def test_gpg_import_fail(test_pubkey_nosecret) ->ImportResult:
+    crate = ROCrate()
+    result = ImportResult(gpg=crate.gpg_binary)
+    result.fingerprints = [test_pubkey_nosecret.key]
+    result.returncode = 2
+    result.results.append({'fingerprint': test_pubkey_nosecret.key, 'problem': '0', 'text': 'Other failure'})
+    return result
+
+@pytest.fixture
+def test_gpg_import_missing(test_pubkey_nosecret) ->ImportResult:
+    crate = ROCrate()
+    result = ImportResult(gpg=crate.gpg_binary)
+    result.returncode = 2
+    result.results.append({'fingerprint': None, 'problem': '0', 'text': 'No valid data found'})
+    return result
+
+@pytest.fixture
+def test_gpg_import_nothing(test_pubkey_nosecret) ->ImportResult:
+    crate = ROCrate()
+    result = ImportResult(gpg=crate.gpg_binary)
+    result.returncode = 0
+    return result
+
+@pytest.fixture
+def test_gpg_import_sucess(test_pubkey_nosecret) ->ImportResult:
+    crate = ROCrate()
+    result = ImportResult(gpg=crate.gpg_binary)
+    result.fingerprints = [test_pubkey_nosecret.key]
+    result.returncode = 0
+    result.results.append({'fingerprint': test_pubkey_nosecret.key, 'ok': '1', 'text': 'Entirely new key'})
+    return result
+
+@mock.patch.object(GPG, "recv_keys")
+def test_receive_keys(test_recv_keys,test_gpg_import_nothing, test_gpg_import_missing,test_gpg_import_sucess, test_gpg_import_fail, test_pubkey_nosecret, test_keyserver:str):
+    crate = ROCrate()
+    test_keyholder = Keyholder(crate, pubkey_fingerprint=test_pubkey_nosecret,keyserver=test_keyserver)
+    gpg = GPG(crate.gpg_binary)
+    test_recv_keys.return_value = test_gpg_import_nothing
+    result = test_keyholder.retreive_keys(gpg)
+    assert result == None
+    #f"invalid response from keyserver for keys {test_pubkey_nosecret.key}: Other failure"
+    with pytest.warns(KeyserverWarning) as warned:
+        test_recv_keys.return_value = test_gpg_import_fail
+        result = test_keyholder.retreive_keys(gpg)
+        assert result == [test_pubkey_nosecret.key]
+
+
+
+    with warnings.catch_warnings():
+        test_recv_keys.return_value = test_gpg_import_sucess
+        result = test_keyholder.retreive_keys(gpg)
+        assert result == [test_pubkey_nosecret.key]
+
+    with pytest.raises(Exception):
+        test_keyholder = Keyholder(crate, pubkey_fingerprint=[],keyserver=test_keyserver)
+    test_keyholder.pubkey_fingerprints = []
+    with pytest.warns(KeyserverWarning) as warned:
+        test_recv_keys.return_value = test_gpg_import_missing
+        result = test_keyholder.retreive_keys(gpg)
+        assert result == []
