@@ -13,7 +13,13 @@ from rocrate.encryption_utils import (
     )
 from rocrate.model.contextentity import ContextEntity
 from rocrate.model.encryptedcontextentity import EncryptedContextEntity
-from rocrate.model.keyholder import Keyholder, PubkeyObject, split_uid, NO_VALID_EMAIL, KeyserverWarning
+from rocrate.model.keyholder import(
+    Keyholder,
+    PubkeyObject,
+    split_uid,
+    NO_VALID_EMAIL,
+    KeyserverWarning
+) 
 from rocrate.rocrate import ROCrate
 
 
@@ -165,7 +171,7 @@ def test_fail_decrypt_without_key(tmpdir:Path, test_pubkey_nosecret:PubkeyObject
 
 
 
-def test_decrypt(tmpdir, test_pubkey_object:PubkeyObject, test_passphrase:str):
+def test_decrypt(tmpdir, test_pubkey_object:PubkeyObject, test_passphrase:str, test_pubkey_nosecret:PubkeyObject):
     """Test decryption of an encrypted crate
     """
     crate = ROCrate()
@@ -184,7 +190,6 @@ def test_decrypt(tmpdir, test_pubkey_object:PubkeyObject, test_passphrase:str):
     crate.write(out_path)
     crate = ROCrate(source=out_path, gpg_passphrase=test_passphrase)
     decrypted_result = crate.dereference("#test_encrypted_meta")
-    print(decrypted_result)
     assert isinstance(decrypted_result, EncryptedContextEntity)
     assert decrypted_result.as_jsonld() == encrypted_entity.as_jsonld()
 
@@ -319,8 +324,6 @@ def test_receive_keys(test_recv_keys,test_gpg_import_nothing, test_gpg_import_mi
         result = test_keyholder.retreive_keys(gpg)
         assert result == [test_pubkey_nosecret.key]
 
-
-
     with warnings.catch_warnings():
         test_recv_keys.return_value = test_gpg_import_sucess
         result = test_keyholder.retreive_keys(gpg)
@@ -328,6 +331,7 @@ def test_receive_keys(test_recv_keys,test_gpg_import_nothing, test_gpg_import_mi
 
     with pytest.raises(Exception):
         test_keyholder = Keyholder(crate, pubkey_fingerprint=[],keyserver=test_keyserver)
+
     test_keyholder.pubkey_fingerprints = []
     with pytest.warns(KeyserverWarning) as warned:
         test_recv_keys.return_value = test_gpg_import_missing

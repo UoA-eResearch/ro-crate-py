@@ -14,10 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import uuid
-from typing import Any, Dict, List, Optional
-
-from pydantic import BaseModel
+from typing import Any, Dict,Optional
 
 from .contextentity import ContextEntity
 
@@ -53,5 +50,3 @@ class EncryptedGraphMessage(ContextEntity):
             #"conformsTo":"profileURI"
         }
         return val
-
-

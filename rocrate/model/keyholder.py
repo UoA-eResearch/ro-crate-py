@@ -13,7 +13,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any, Dict, List, Optional, Tuple
+
+from typing import Any, Dict, List, Optional
 
 import re
 import warnings
@@ -44,11 +45,6 @@ class PubkeyObject(BaseModel):
     key:str #key
     uids:List[str] #uids
 
-    @property
-    def combined(self) -> str:
-        return f"{self.key}:{self.method}"
-
-
 def split_uid(uid: str) -> Dict[str, str]:
     """split supplied uids from gpg's key information into email and name"""
     uid_sections = uid.split(" ")
@@ -64,7 +60,7 @@ def split_uid(uid: str) -> Dict[str, str]:
 
 
 
-class Keyholder(ContextEntity):   
+class Keyholder(ContextEntity):
 
     def __init__(
             self,
@@ -74,26 +70,33 @@ class Keyholder(ContextEntity):
             pubkey_fingerprint: Optional[PubkeyObject] = None,
             keyserver:Optional[str] = None
         ) -> None:
-            properties = properties or {}
-            if not identifier:
-                if pubkey_fingerprint:
-                    if keyserver:
-                        identifier = f"{keyserver}{HPK_STUB}{pubkey_fingerprint.key}"
-                    else:
-                        identifier = pubkey_fingerprint.key
-                else:
-                    raise ValueError(f"No valid identifier combination supplied for keyholder")
+        properties = properties or {}
+        if not identifier:
             if pubkey_fingerprint:
-                names, emails =  zip(*[split_uid(uid) for uid in pubkey_fingerprint.uids])
-                properties["pubkey_fingerprints"] = pubkey_fingerprint.key
-                properties["email"] = emails
-                properties["name"] = names
-            if keyserver:
-                properties["keyserver"] = keyserver
-                properties["url"] = f"{keyserver}{HPK_STUB}{pubkey_fingerprint.key}"
-            super().__init__(crate, identifier, properties)
+                if keyserver:
+                    identifier = f"{keyserver}{HPK_STUB}{pubkey_fingerprint.key}"
+                else:
+                    identifier = pubkey_fingerprint.key
+            else:
+                raise ValueError("No valid identifier combination supplied for keyholder")
+        if pubkey_fingerprint:
+            names, emails =  zip(*[split_uid(uid) for uid in pubkey_fingerprint.uids])
+            properties["pubkey_fingerprints"] = pubkey_fingerprint.key
+            properties["email"] = emails
+            properties["name"] = names
+        if keyserver:
+            properties["keyserver"] = keyserver
+            properties["url"] = f"{keyserver}{HPK_STUB}{pubkey_fingerprint.key}"
+        super().__init__(crate, identifier, properties)
 
     def retreive_keys(self, gpg: GPG):
+        """Retrive keys from a keyserver if possible
+
+        Args:
+            gpg (GPG): a gpg object that can recive keys
+        Returns:
+            List[str]: A list of strings returned by the gpg recv_keys method
+        """
         if pubkeys := self.get("pubkey_fingerprints"):
             if keyserver := self.get("keyserver"):
                 results = gpg.recv_keys(keyserver, pubkeys)
@@ -102,7 +105,9 @@ class Keyholder(ContextEntity):
                     return None
                 for result in results.results:
                     if result.get("problem"):
-                        warnings.warn(f"invalid response from keyserver for keys {result.get("fingerprint")}: {result.get("text")} - return code: {results.returncode}", KeyserverWarning)
+                        warnings.warn(f""""invalid response from keyserver for keys
+                        {result.get("fingerprint")}: {result.get("text")} - return code: {results.returncode}""",
+                        KeyserverWarning)
                 return results.fingerprints
         return None
 
