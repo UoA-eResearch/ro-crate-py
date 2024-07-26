@@ -149,7 +149,7 @@ class Metadata(File):
                 encrypted_graph=encrypted_field._as_text(),
                 properties={
                     "deliveryMethod":"https://doi.org/10.17487/RFC4880",
-                    "recipients": [{"@id":recipient} for recipient in list(recipients)]
+                    "recipients": [{"@id":recipient} for recipient in recipients_subset for recipients_subset in recipients]
                 }                
             )
             encrypted_field_list.append(encrypted_message)
