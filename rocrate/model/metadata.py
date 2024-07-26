@@ -143,13 +143,14 @@ class Metadata(File):
             encrypted_field = gpg.encrypt(json_representation, fingerprints)
             if not encrypted_field.ok:
                 raise Warning(f'Unable to encrypt field. GPG status: {encrypted_field.status}')
+            recipient_ids = [recipient_id for recipient_subset in recipients for recipient_id in recipient_subset] 
             encrypted_message = EncryptedGraphMessage(
                 crate= self.crate,
                 identifier=f"Encrypted_Message{"_".join(fingerprints)}",
                 encrypted_graph=encrypted_field._as_text(),
                 properties={
                     "deliveryMethod":"https://doi.org/10.17487/RFC4880",
-                    "recipients": [{"@id":recipient} for recipient in recipients_subset for recipients_subset in recipients]
+                    "recipients": [{"@id":recipient} for recipient in recipient_ids]
                 }                
             )
             encrypted_field_list.append(encrypted_message)
