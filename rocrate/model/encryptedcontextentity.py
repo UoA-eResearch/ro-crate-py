@@ -16,9 +16,10 @@
 
 from typing import Any, List, Optional
 
-# from rocrate.rocrate import ROCrate
-
+from ..utils import get_norm_value
 from .contextentity import ContextEntity
+from .entity import Entity
+from typing import Dict
 
 
 class EncryptedContextEntity(ContextEntity):
@@ -38,31 +39,14 @@ class EncryptedContextEntity(ContextEntity):
         crate,
         identifier: Optional[Any] = None,
         properties: Optional[Any] = None,
-        pubkey_fingerprints: Optional[List[str]] = None,
     ) -> None:
-        self.pubkey_fingerprints = []
-        fingerprints = set()
-        if pubkey_fingerprints:
-            fingerprints.update(pubkey_fingerprints)
-        if properties and properties.get("pubkey_fingerprints"):
-            fingerprints.update([properties["pubkey_fingerprints"]])
-            properties.pop("pubkey_fingerprints")
-        self.pubkey_fingerprints = list(fingerprints)
         super().__init__(crate, identifier, properties)
 
-    def add_key(
-        self,
-        pubkey_fingerprints: str | List[str],
-    ) -> None:
-        """Function to add a new encryption key to the entity
-
-        Args:
-            key (str|List[str]): The 'fingerprint' of a GPG public key or a list of fingerprints
-                for multiple keys.
-                Refer(https://pypi.org/project/python-gnupg/) for more details.
-        """
-        if isinstance(pubkey_fingerprints, str):
-            self.pubkey_fingerprints.append(pubkey_fingerprints)
-        else:
-            self.pubkey_fingerprints.extend(pubkey_fingerprints)
-        self.pubkey_fingerprints = list(set(self.pubkey_fingerprints))
+    def _empty(self) -> Dict:
+        val = {
+            "@id": self.id,
+            "@type":"Thing",
+            "ToBeEncrypted":True
+            #"conformsTo":"profileURI"
+        }
+        return val

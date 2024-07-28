@@ -23,6 +23,7 @@ import atexit
 import os
 import tempfile
 from contextlib import redirect_stdout
+
 from galaxy2cwl import get_cwl_interface
 
 from .file import File

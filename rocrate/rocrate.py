@@ -52,7 +52,9 @@ from .model import (
     TestService,
     TestSuite,
     WorkflowDescription,
-    encryptedcontextentity
+    EncryptedContextEntity,
+    EncryptedGraphMessage,
+    Keyholder
 )
 from .model.computationalworkflow import galaxy_to_abstract_cwl
 from .model.computerlanguage import get_lang
@@ -80,7 +82,6 @@ class ROCrate:
         gen_preview=False,
         init=False,
         exclude=None,
-        pubkey_fingerprints: Optional[List[str]] = None,
         gpg_binary: Optional[str] = None,
         gpg_passphrase: Optional[str] = None
     ):
@@ -93,7 +94,6 @@ class ROCrate:
         self.preview = None
         if gen_preview:
             self.add(Preview(self))
-        self.pubkey_fingerprints = pubkey_fingerprints
         if gpg_binary:
             self.gpg_binary = gpg_binary
         elif platform in ["linux", "linux2"]:
@@ -161,11 +161,10 @@ class ROCrate:
                 metadata_path = source / LegacyMetadata.BASENAME
             if not metadata_path.is_file():
                 raise ValueError(f"Not a valid RO-Crate: missing {Metadata.BASENAME}")
-            _, entities, encrypted = read_metadata(metadata_path)
-            if encrypted:
-                self.__decrypt(encrypted)
+        _, entities = read_metadata(metadata_path)
         self.__read_data_entities(entities, source, gen_preview)
         self.__read_contextual_entities(entities)
+        self.__read_encrypted_entities()
         return source
 
     def __read_data_entities(self, entities, source, gen_preview):
@@ -214,7 +213,12 @@ class ROCrate:
             cls = pick_type(entity, type_map, fallback=ContextEntity)
             self.add(cls(self, identifier, entity))
 
-    def __decrypt(self, encrypted:List[Dict[str,str]]) -> Dict[str, Dict[str, str]]:
+    def __read_encrypted_entities(self):
+        entities=self.get_by_type(["SendAction", "EncryptedGraphMessage"],exact=True)
+        if(entities):
+            self.__decrypt(entities)
+
+    def __decrypt(self, encrypted:List[EncryptedGraphMessage]) -> Dict[str, Dict[str, str]]:
         """Decrypts blocks of encrypted metadata for which the user possesses private keys
         and adds them to the current crate as EncryptedContextEntities.
         
@@ -229,16 +233,17 @@ class ROCrate:
         gpg = gnupg.GPG(gpgbinary=self.gpg_binary)
         decrypted_entitites = {}
         for encrypted_entity in encrypted:
-            encrypted_block = encrypted_entity["encrypted_graph"]
-            fingerprints =  [recipent['@id'] for recipent in encrypted_entity["recipents"]]
+            encrypted_block = encrypted_entity.get("encryptedGraph")
             decrypted = gpg.decrypt(encrypted_block,  passphrase=self.gpg_passphrase)
             if not decrypted.ok:
                 continue
             decrypted_data = json.loads(decrypted.data)
             decrypted_dict = {_["@id"]: _ for _ in decrypted_data}
             for identifier, decrypted_item in decrypted_dict.items():
-                self.add(encryptedcontextentity.EncryptedContextEntity(self,
-                identifier, decrypted_item, pubkey_fingerprints=fingerprints))
+                decrypted_entity : ContextEntity = self.add(EncryptedContextEntity(crate=self,
+                identifier=identifier, properties=decrypted_item))
+            if decrypted_entity.type is ["SendAction", "EncryptedGraphMessage"]:
+                encrypted.append(decrypted_entity)
             decrypted_entitites.update(decrypted_dict)
         return decrypted_entitites
 
@@ -757,6 +762,11 @@ class ROCrate:
             if suite is None:
                 raise ValueError("suite not found")
         return suite
+    
+    def retreive_gpg_keys(self):
+        keyholders = self.get_by_type(["ContactPoint", "EncryptionKeyholder"], True)
+        gpg = gnupg.GPG(gpgbinary=self.gpg_binary)
+        _ = [keyholder.retreive_keys(gpg) for keyholder in keyholders if isinstance(keyholder, Keyholder)]
 
 
 def make_workflow_rocrate(
@@ -775,3 +785,4 @@ def make_workflow_rocrate(
     for file_entry in include_files:
         wf_crate.add_file(file_entry)
     return wf_crate
+    
