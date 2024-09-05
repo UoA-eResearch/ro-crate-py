@@ -146,7 +146,7 @@ class Metadata(File):
             recipient_ids = [recipient_id for recipient_subset in recipients for recipient_id in recipient_subset] 
             encrypted_message = EncryptedGraphMessage(
                 crate= self.crate,
-                identifier=f"Encrypted_Message{"_".join(fingerprints)}",
+                identifier=f"Encrypted_Message{'_'.join(fingerprints)}",
                 encrypted_graph=encrypted_field._as_text(),
                 properties={
                     "deliveryMethod":"https://doi.org/10.17487/RFC4880",
