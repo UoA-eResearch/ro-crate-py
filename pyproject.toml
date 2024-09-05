@@ -8,7 +8,7 @@ readme = "README.md"
 packages = [{include = "rocrate"}]
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = ">=3.10,<=3.12.5"
 requests = "^2.31.0"
 arcp = "0.2.1"
 galaxy2cwl = "^0.1.4"
