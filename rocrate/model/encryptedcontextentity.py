@@ -27,10 +27,6 @@ class EncryptedContextEntity(ContextEntity):
     
         An encrypted context entity is a subclass of ContextEntity designed to hold metadata fields
     that are sensitive in nature and should only be visible to selected people.
-
-    Attributes:
-        recipient_keys (List(str)): A list of the 'fingerprints' of keys that the entity should
-            be encrypted against
     """
 
 

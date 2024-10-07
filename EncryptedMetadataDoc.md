@@ -1,5 +1,5 @@
 # Encrypting Sensitive Metadata
-Using GNU Privacy Guard (https://gnupg.org/) via the python wrapper (https://github.com/vsajip/python-gnupg) sensitive metadata can be encrypted as PGP blocks readable only by specified recipients.
+Using GNU Privacy Guard (https://gnupg.org/) via the python wrapper (https://github.com/vsajip/python-gnupg) sensitive metadata can be encrypted as PGP blocks readable only by specified recipients (specified via `encryptedTo`).
 
 RO-Crate’s that encrypt metadata require a valid GPG binary installed on the system. The location of this binary may be specified by the parameter `gpg_binary` otherwise system default locations are used, for example: `/usr/bin/gpg` for Ubuntu.
 

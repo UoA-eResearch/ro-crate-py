@@ -12,6 +12,7 @@ from rocrate.encryption_utils import (
     combine_recipient_keys
     )
 from rocrate.model.contextentity import ContextEntity
+from rocrate.model.entity import Entity
 from rocrate.model.encryptedcontextentity import EncryptedContextEntity
 from rocrate.model.keyholder import(
     Keyholder,
@@ -117,7 +118,7 @@ def test_add_encryptedmetadadata(test_pubkey_object:PubkeyObject):
     ))
     encrypted_entity = crate.dereference("#test_encrypted_meta")
     assert encrypted_entity
-    encrypted_entity.append_to("recipients", test_keyholder)
+    encrypted_entity.append_to("encryptedTo", test_keyholder)
     assert test_pubkey_object.key in combine_recipient_keys(encrypted_entity)
 
 
@@ -129,18 +130,18 @@ def test_fail_find_keys(test_pubkey_object:PubkeyObject):
         identifier="keyholder without a key"
     )
     crate.add(test_keyholder)
-    encrypted_entity = crate.add(EncryptedContextEntity(
+    encrypted_entity:Entity = crate.add(EncryptedContextEntity(
         crate=crate,
         identifier="#test_encrypted_meta",
     ))
-    encrypted_entity.append_to("recipients", test_keyholder)
+    encrypted_entity.append_to("encryptedTo", test_keyholder)
     with pytest.raises(NoValidKeysError):
             combine_recipient_keys(encrypted_entity, True)
     test_keyholder2 = Keyholder(
         crate=crate,
         pubkey_fingerprint=test_pubkey_object
     )
-    encrypted_entity.append_to("recipients", test_keyholder2)
+    encrypted_entity.append_to("encryptedTo", test_keyholder2)
     with pytest.raises(MissingMemberException):
         combine_recipient_keys(encrypted_entity)
 
@@ -160,7 +161,7 @@ def test_fail_decrypt_without_key(tmpdir:Path, test_pubkey_nosecret:PubkeyObject
         identifier="#test_encrypted_meta",
         properties = {"name":"test_encrypted_meta"},
     ))
-    encrypted_entity.append_to("recipients", test_keyholder)
+    encrypted_entity.append_to("encryptedTo", test_keyholder)
     out_path = tmpdir / "ro_crate_out"
     crate.write(out_path)
     crate = ROCrate(source=out_path, gpg_passphrase=test_passphrase)
@@ -185,7 +186,7 @@ def test_decrypt(tmpdir, test_pubkey_object:PubkeyObject, test_passphrase:str, t
         identifier="#test_encrypted_meta",
         properties = {"name":"test_encrypted_meta"},
     ))
-    encrypted_entity.append_to("recipients", test_keyholder)
+    encrypted_entity.append_to("encryptedTo", test_keyholder)
     out_path = tmpdir / "ro_crate_out"
     crate.write(out_path)
     crate = ROCrate(source=out_path, gpg_passphrase=test_passphrase)
@@ -209,7 +210,7 @@ def test_re_encrypt(tmpdir,  test_pubkey_object:PubkeyObject, test_passphrase):
         identifier="#test_encrypted_meta",
         properties = {"name":"test_encrypted_meta"},
     ))
-    encrypted_entity.append_to("recipients", test_keyholder)
+    encrypted_entity.append_to("encryptedTo", test_keyholder)
     out_path = tmpdir / "ro_crate_out"
     crate.write(out_path)
     crate = ROCrate(source=out_path, gpg_passphrase=test_passphrase)
@@ -255,9 +256,9 @@ def test_multiple_keys(
         identifier="#test_encrypted_meta_b",
         properties = {"name":"test_encrypted_meta_b"},
     ))
-    encrypted_entity_a.append_to("recipients", test_keyholder)
-    encrypted_entity_b.append_to("recipients", test_recipient)
-    encrypted_entity_b.append_to("recipients", test_keyholder)
+    encrypted_entity_a.append_to("encryptedTo", test_keyholder)
+    encrypted_entity_b.append_to("encryptedTo", test_recipient)
+    encrypted_entity_b.append_to("encryptedTo", test_keyholder)
     out_path = tmpdir / "ro_crate_out"
     crate.write(out_path)
     GPG(crate.gpg_binary).delete_keys(test_gpg_key.fingerprint, True, passphrase=test_passphrase)
