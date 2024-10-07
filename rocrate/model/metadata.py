@@ -38,7 +38,8 @@ from .file import File
 
 
 WORKFLOW_PROFILE = "https://w3id.org/workflowhub/workflow-ro-crate/1.0"
-
+ENCRYPTION_PROFILE = "https://uoa-eresearch.github.io/GPG-ro-crate-profile/"
+ENCRYPTION_CONTEXT = "https://w3id.org/ro/terms/openpgp"
 
 class Metadata(File):
     """\
@@ -47,6 +48,8 @@ class Metadata(File):
 
     BASENAME = "ro-crate-metadata.json"
     PROFILE = "https://w3id.org/ro/crate/1.1"
+    
+    
 
     def __init__(self, crate, source=None, dest_path=None, properties=None,):
         if source is None and dest_path is None:
@@ -88,8 +91,12 @@ class Metadata(File):
                 graph.append(entity.properties())
         encrypted_fields = self.__aggregate_encrypted_fields(encrypted_fields)
         encrypted_data = self.__encrypt_fields(encrypted_fields)
-        graph.extend([encrypted_graph.properties() for encrypted_graph in encrypted_data])
         context = [f"{self.PROFILE}/context"]
+        if len(encrypted_data) > 0:
+            graph.extend([encrypted_graph.properties() for encrypted_graph in encrypted_data])
+            self.extra_contexts.append(ENCRYPTION_CONTEXT)
+            self.append_to("conformsTo", ENCRYPTION_PROFILE)
+
         context.extend(self.extra_contexts)
         if self.extra_terms:
             context.append(self.extra_terms)
