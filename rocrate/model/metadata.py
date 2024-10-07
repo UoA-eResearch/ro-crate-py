@@ -79,7 +79,7 @@ class Metadata(File):
         graph = []
         encrypted_fields = []
         for entity in self.crate.get_entities():
-            if isinstance(entity, EncryptedContextEntity) or entity.get("toBeEncrypted"):
+            if isinstance(entity, EncryptedContextEntity) or "EncryptedContextEntity" in entity.type:
                 entity.pubkey_fingerprints = combine_recipient_keys(entity)
                 encrypted_fields.append(
                     (entity, entity.pubkey_fingerprints)
@@ -100,7 +100,7 @@ class Metadata(File):
     def __aggregate_encrypted_fields(
         self,
         encrypted_fields: List[Tuple[Dict[str, str], List[str]]],
-    ) -> Dict[List[str], List[Dict[str, str]]]:
+    ) -> Dict[tuple[str, ...], List[Dict[str, str]]]:
         """Aggregate any encrypted fields into a list of JSON fragments ready to be
         encrypted.
 
@@ -109,12 +109,12 @@ class Metadata(File):
 
         Returns:
             Dict[List[str],List[str]]
-            ]: A dictionary aggreated by pubkeys
+            ]: A dictionary aggregated by pubkeys
         """
-        aggregated_fields = {}
+        aggregated_fields: Dict[tuple[str, ...], List[Dict[str, str]]] = {}
         for field in encrypted_fields:
-            pubkey_fingerprints = field[1]
-            pubkey_fingerprints = tuple(set(pubkey_fingerprints))  # strip out duplicates
+            fingerprints_list = field[1]
+            pubkey_fingerprints = tuple(set(fingerprints_list))  # strip out duplicates
             if pubkey_fingerprints in aggregated_fields:
                 aggregated_fields[pubkey_fingerprints].append(field[0])
             else:
@@ -136,7 +136,7 @@ class Metadata(File):
             recipients = set()
             fields_properties = []
             for field in fields:
-                recipients.update([tuple(recipient) for recipient in [get_norm_value(field, "recipients") for feild in fields]])
+                recipients.update([tuple(recipient) for recipient in [get_norm_value(field, "encryptedTo") for feild in fields]])
                 fields_properties.append(field.properties())
             json_representation = json.dumps(fields_properties)
             gpg.trust_keys(fingerprints, 'TRUST_ULTIMATE')
@@ -150,7 +150,7 @@ class Metadata(File):
                 encrypted_graph=encrypted_field._as_text(),
                 properties={
                     "deliveryMethod":"https://doi.org/10.17487/RFC4880",
-                    "recipients": [{"@id":recipient} for recipient in recipient_ids]
+                    "encryptedTo": [{"@id":recipient} for recipient in recipient_ids]
                 }                
             )
             encrypted_field_list.append(encrypted_message)

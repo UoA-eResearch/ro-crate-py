@@ -22,12 +22,12 @@ class MissingMemberException(Exception):
         return 'At least one target lacks a valid key, or cannot be found in the graph'
 
 def combine_recipient_keys(target_entity: Entity, allow_missing: Optional[bool]=False) -> list[str]:
-    """Return the complete set of all keys found on this entity and it's recipients
+    """Return the complete set of all keys found on this entity and it's encryptedTo recipients
 
     Returns:
         list[str]: all pubkeyfingerprints of this entity and it's recipients
     """
-    if recipients := get_norm_value(target_entity, "recipients"):
+    if recipients := get_norm_value(target_entity, "encryptedTo"):
         recipient_keys = []
         missing_member = False
         for recipient in recipients:
