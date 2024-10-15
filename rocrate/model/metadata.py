@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 
-# Copyright 2019-2023 The University of Manchester, UK
-# Copyright 2020-2023 Vlaams Instituut voor Biotechnologie (VIB), BE
-# Copyright 2020-2023 Barcelona Supercomputing Center (BSC), ES
-# Copyright 2020-2023 Center for Advanced Studies, Research and Development in Sardinia (CRS4), IT
-# Copyright 2022-2023 École Polytechnique Fédérale de Lausanne, CH
+# Copyright 2019-2024 The University of Manchester, UK
+# Copyright 2020-2024 Vlaams Instituut voor Biotechnologie (VIB), BE
+# Copyright 2020-2024 Barcelona Supercomputing Center (BSC), ES
+# Copyright 2020-2024 Center for Advanced Studies, Research and Development in Sardinia (CRS4), IT
+# Copyright 2022-2024 École Polytechnique Fédérale de Lausanne, CH
+# Copyright 2024 Data Centre, SciLifeLab, SE
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,62 +21,153 @@
 
 import json
 from pathlib import Path
+from typing import Dict, List, Tuple
 
-from .file import File
+from gnupg import GPG
+
+from rocrate.model.encryptedcontextentity import EncryptedContextEntity
+
+from ..encryption_utils import combine_recipient_keys
+from ..utils import get_norm_value
+from .contextentity import ContextEntity
 from .dataset import Dataset
+from .encryptedgraphmessage import EncryptedGraphMessage
+from .file import File
+
+# from rocrate.rocrate import ROCrate
 
 
 WORKFLOW_PROFILE = "https://w3id.org/workflowhub/workflow-ro-crate/1.0"
-
+ENCRYPTION_PROFILE = "https://uoa-eresearch.github.io/GPG-ro-crate-profile/"
+ENCRYPTION_CONTEXT = "https://w3id.org/ro/terms/openpgp"
 
 class Metadata(File):
     """\
     RO-Crate metadata file.
     """
+
     BASENAME = "ro-crate-metadata.json"
     PROFILE = "https://w3id.org/ro/crate/1.1"
+    
+    
 
-    def __init__(self, crate, source=None, dest_path=None, properties=None):
+    def __init__(self, crate, source=None, dest_path=None, properties=None,):
         if source is None and dest_path is None:
             dest_path = self.BASENAME
         super().__init__(
-            crate,
+            crate= crate,
             source=source,
             dest_path=dest_path,
             fetch_remote=False,
             validate_url=False,
-            properties=properties
+            properties=properties,
         )
         # https://www.researchobject.org/ro-crate/1.1/appendix/jsonld.html#extending-ro-crate
-        self.extra_contexts = []
+        self.extra_contexts = []#extend the crate with another profile
         self.extra_terms = {}
 
     def _empty(self):
         # default properties of the metadata entry
-        val = {"@id": self.id,
-               "@type": "CreativeWork",
-               "conformsTo": {"@id": self.PROFILE},
-               "about": {"@id": "./"}}
+        val = {
+            "@id": self.id,
+            "@type": "CreativeWork",
+            "conformsTo": {"@id": self.PROFILE},
+            "about": {"@id": "./"},
+        }
         return val
 
     # Generate the crate's `ro-crate-metadata.json`.
     # @return [String] The rendered JSON-LD as a "prettified" string.
     def generate(self):
         graph = []
+        encrypted_fields = []
         for entity in self.crate.get_entities():
-            graph.append(entity.properties())
-        context = [f'{self.PROFILE}/context']
+            if isinstance(entity, EncryptedContextEntity) or "EncryptedContextEntity" in entity.type:
+                entity.pubkey_fingerprints = combine_recipient_keys(entity)
+                encrypted_fields.append(
+                    (entity, entity.pubkey_fingerprints)
+                )
+            else:
+                graph.append(entity.properties())
+        encrypted_fields = self.__aggregate_encrypted_fields(encrypted_fields)
+        encrypted_data = self.__encrypt_fields(encrypted_fields)
+        context = [f"{self.PROFILE}/context"]
+        if len(encrypted_data) > 0:
+            graph.extend([encrypted_graph.properties() for encrypted_graph in encrypted_data])
+            self.extra_contexts.append(ENCRYPTION_CONTEXT)
+            self.append_to("conformsTo", ENCRYPTION_PROFILE)
+
         context.extend(self.extra_contexts)
         if self.extra_terms:
             context.append(self.extra_terms)
         if len(context) == 1:
             context = context[0]
-        return {'@context': context, '@graph': graph}
+        return {"@context": context, "@graph": graph}
+
+    def __aggregate_encrypted_fields(
+        self,
+        encrypted_fields: List[Tuple[Dict[str, str], List[str]]],
+    ) -> Dict[tuple[str, ...], List[Dict[str, str]]]:
+        """Aggregate any encrypted fields into a list of JSON fragments ready to be
+        encrypted.
+
+        Args:
+            encrypted_fields: The fields from the encrypted context entities and their pubkeys
+
+        Returns:
+            Dict[List[str],List[str]]
+            ]: A dictionary aggregated by pubkeys
+        """
+        aggregated_fields: Dict[tuple[str, ...], List[Dict[str, str]]] = {}
+        for field in encrypted_fields:
+            fingerprints_list = field[1]
+            pubkey_fingerprints = tuple(set(fingerprints_list))  # strip out duplicates
+            if pubkey_fingerprints in aggregated_fields:
+                aggregated_fields[pubkey_fingerprints].append(field[0])
+            else:
+                aggregated_fields[pubkey_fingerprints] = [field[0]]
+        return aggregated_fields
+
+    def __encrypt_fields(self, encrypted_fields: Dict[List[str],List[EncryptedContextEntity]],) -> list[EncryptedGraphMessage]:
+        """Encrypt the JSON representation of the encrypted fields using the fingerprints provided
+        
+        Args:
+            encrypted_fields: The aggregated encrypted fields
+
+        Returns:
+            Dict[str,str]: The encrypted fields
+        """
+        encrypted_field_list = []
+        gpg = GPG(gpgbinary=self.crate.gpg_binary)
+        for fingerprints, fields in encrypted_fields.items():
+            recipients = set()
+            fields_properties = []
+            for field in fields:
+                recipients.update([tuple(recipient) for recipient in [get_norm_value(field, "encryptedTo") for feild in fields]])
+                fields_properties.append(field.properties())
+            json_representation = json.dumps(fields_properties)
+            gpg.trust_keys(fingerprints, 'TRUST_ULTIMATE')
+            encrypted_field = gpg.encrypt(json_representation, fingerprints)
+            if not encrypted_field.ok:
+                raise Warning(f'Unable to encrypt field. GPG status: {encrypted_field.status}')
+            recipient_ids = [recipient_id for recipient_subset in recipients for recipient_id in recipient_subset] 
+            encrypted_message = EncryptedGraphMessage(
+                crate= self.crate,
+                identifier=f"Encrypted_Message{'_'.join(fingerprints)}",
+                encrypted_graph=encrypted_field._as_text(),
+                properties={
+                    "deliveryMethod":"https://doi.org/10.17487/RFC4880",
+                    "encryptedTo": [{"@id":recipient} for recipient in recipient_ids]
+                }                
+            )
+            encrypted_field_list.append(encrypted_message)
+        return encrypted_field_list         
+
 
     def write(self, base_path):
         write_path = Path(base_path) / self.id
         as_jsonld = self.generate()
-        with open(write_path, 'w') as outfile:
+        with open(write_path, "w") as outfile:
             json.dump(as_jsonld, outfile, indent=4, sort_keys=True)
 
     @property
@@ -103,7 +195,7 @@ TESTING_EXTRA_TERMS = {
     "runsOn": "https://w3id.org/ro/terms/test#runsOn",
     "resource": "https://w3id.org/ro/terms/test#resource",
     "definition": "https://w3id.org/ro/terms/test#definition",
-    "engineVersion": "https://w3id.org/ro/terms/test#engineVersion"
+    "engineVersion": "https://w3id.org/ro/terms/test#engineVersion",
 }
 
 

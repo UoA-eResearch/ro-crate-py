@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 
-# Copyright 2019-2023 The University of Manchester, UK
-# Copyright 2020-2023 Vlaams Instituut voor Biotechnologie (VIB), BE
-# Copyright 2020-2023 Barcelona Supercomputing Center (BSC), ES
-# Copyright 2020-2023 Center for Advanced Studies, Research and Development in Sardinia (CRS4), IT
-# Copyright 2022-2023 École Polytechnique Fédérale de Lausanne, CH
+# Copyright 2019-2024 The University of Manchester, UK
+# Copyright 2020-2024 Vlaams Instituut voor Biotechnologie (VIB), BE
+# Copyright 2020-2024 Barcelona Supercomputing Center (BSC), ES
+# Copyright 2020-2024 Center for Advanced Studies, Research and Development in Sardinia (CRS4), IT
+# Copyright 2022-2024 École Polytechnique Fédérale de Lausanne, CH
+# Copyright 2024 Data Centre, SciLifeLab, SE
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +23,10 @@ import uuid
 from collections.abc import MutableMapping
 
 from dateutil.parser import isoparse
+
+# from rocrate.rocrate import ROCrate
 from .. import vocabs
+
 
 
 class Entity(MutableMapping):
@@ -30,15 +34,19 @@ class Entity(MutableMapping):
     def __init__(self, crate, identifier=None, properties=None):
         self.crate = crate
         if identifier:
-            self.id = self.format_id(identifier)
+            self.__id = self.format_id(identifier)
         else:
-            self.id = f"#{uuid.uuid4()}"
+            self.__id = f"#{uuid.uuid4()}"
         if properties:
             empty = self._empty()
             empty.update(properties)
             self._jsonld = empty
         else:
             self._jsonld = self._empty()
+
+    @property
+    def id(self):
+        return self.__id
 
     # Format the given ID with rules appropriate for this type.
     # For example, Dataset (directory) data entities SHOULD end with /

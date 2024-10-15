@@ -1,0 +1,32 @@
+[tool.poetry]
+name = "ro-crate-py"
+version = "0.1.2"
+description = "RO-Crate metadata generator/parser"
+authors = ["Your Name <you@example.com>"]
+license = "Apache License, Version 2.0"
+readme = "README.md"
+packages = [{include = "rocrate"}]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<=3.12.5"
+requests = "^2.31.0"
+arcp = "0.2.1"
+galaxy2cwl = "^0.1.4"
+Jinja2 = "^3.1.2"
+python-dateutil = "^2.8.2"
+click = "^8.1.7"
+bagit = "^1.8.1"
+python-gnupg = "^0.5.2"
+pydantic = "^2.7.4"
+mock = "^5.1.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.3"
+mypy = "^1.6.1"
+flake8 = "^6.1.0"
+flake8-bandit = "^4.1.1"
+flake8-mypy = "^17.8.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

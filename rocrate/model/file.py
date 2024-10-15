@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 
-# Copyright 2019-2023 The University of Manchester, UK
-# Copyright 2020-2023 Vlaams Instituut voor Biotechnologie (VIB), BE
-# Copyright 2020-2023 Barcelona Supercomputing Center (BSC), ES
-# Copyright 2020-2023 Center for Advanced Studies, Research and Development in Sardinia (CRS4), IT
-# Copyright 2022-2023 École Polytechnique Fédérale de Lausanne, CH
+# Copyright 2019-2024 The University of Manchester, UK
+# Copyright 2020-2024 Vlaams Instituut voor Biotechnologie (VIB), BE
+# Copyright 2020-2024 Barcelona Supercomputing Center (BSC), ES
+# Copyright 2020-2024 Center for Advanced Studies, Research and Development in Sardinia (CRS4), IT
+# Copyright 2022-2024 École Polytechnique Fédérale de Lausanne, CH
+# Copyright 2024 Data Centre, SciLifeLab, SE
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,10 +20,10 @@
 # limitations under the License.
 
 from pathlib import Path
+import requests
 import shutil
 import urllib.request
 import warnings
-from http.client import HTTPResponse
 from io import BytesIO, StringIO
 
 from .file_or_dir import FileOrDir
@@ -47,18 +48,20 @@ class File(FileOrDir):
                 out_file.write(self.source.getvalue())
         elif is_url(str(self.source)):
             if self.fetch_remote or self.validate_url:
-                with urllib.request.urlopen(self.source) as response:
-                    if self.validate_url:
-                        if isinstance(response, HTTPResponse):
+                if self.validate_url:
+                    if self.source.startswith("http"):
+                        with requests.head(self.source) as response:
                             self._jsonld.update({
-                                'contentSize': response.getheader('Content-Length'),
-                                'encodingFormat': response.getheader('Content-Type')
+                                'contentSize': response.headers.get('Content-Length'),
+                                'encodingFormat': response.headers.get('Content-Type')
                             })
                         if not self.fetch_remote:
-                            self._jsonld['sdDatePublished'] = iso_now()
-                    if self.fetch_remote:
-                        out_file_path.parent.mkdir(parents=True, exist_ok=True)
-                        urllib.request.urlretrieve(response.url, out_file_path)
+                            date_published = response.headers.get("Last-Modified", iso_now())
+                            self._jsonld['sdDatePublished'] = date_published
+                if self.fetch_remote:
+                    out_file_path.parent.mkdir(parents=True, exist_ok=True)
+                    urllib.request.urlretrieve(self.source, out_file_path)
+                    self._jsonld['contentUrl'] = str(self.source)
         elif self.source is None:
             # Allows to record a File entity whose @id does not exist, see #73
             warnings.warn(f"No source for {self.id}")

@@ -1,8 +1,9 @@
-# Copyright 2019-2023 The University of Manchester, UK
-# Copyright 2020-2023 Vlaams Instituut voor Biotechnologie (VIB), BE
-# Copyright 2020-2023 Barcelona Supercomputing Center (BSC), ES
-# Copyright 2020-2023 Center for Advanced Studies, Research and Development in Sardinia (CRS4), IT
-# Copyright 2022-2023 École Polytechnique Fédérale de Lausanne, CH
+# Copyright 2019-2024 The University of Manchester, UK
+# Copyright 2020-2024 Vlaams Instituut voor Biotechnologie (VIB), BE
+# Copyright 2020-2024 Barcelona Supercomputing Center (BSC), ES
+# Copyright 2020-2024 Center for Advanced Studies, Research and Development in Sardinia (CRS4), IT
+# Copyright 2022-2024 École Polytechnique Fédérale de Lausanne, CH
+# Copyright 2024 Data Centre, SciLifeLab, SE
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,6 +21,7 @@ import json
 import click
 from click.testing import CliRunner
 import pytest
+import shutil
 
 from rocrate.cli import cli
 from rocrate.model import File
@@ -133,6 +135,60 @@ def test_cli_init_exclude(test_data_dir, helpers):
 
 
 @pytest.mark.parametrize("cwd", [False, True])
+def test_cli_add_file(tmpdir, test_data_dir, helpers, monkeypatch, cwd):
+    # init
+    crate_dir = tmpdir / "crate"
+    crate_dir.mkdir()
+    runner = CliRunner()
+    assert runner.invoke(cli, ["init", "-c", str(crate_dir)]).exit_code == 0
+    json_entities = helpers.read_json_entities(crate_dir)
+    assert set(json_entities) == {"./", "ro-crate-metadata.json"}
+    # add
+    shutil.copy(test_data_dir / "sample_file.txt", crate_dir)
+    file_path = crate_dir / "sample_file.txt"
+    args = ["add", "file", str(file_path), "-P", "name=foo", "-P", "description=foo bar"]
+    if cwd:
+        monkeypatch.chdir(str(crate_dir))
+        file_path = file_path.relative_to(crate_dir)
+    else:
+        args.extend(["-c", str(crate_dir)])
+    result = runner.invoke(cli, args)
+    assert result.exit_code == 0
+    json_entities = helpers.read_json_entities(crate_dir)
+    assert "sample_file.txt" in json_entities
+    assert json_entities["sample_file.txt"]["@type"] == "File"
+    assert json_entities["sample_file.txt"]["name"] == "foo"
+    assert json_entities["sample_file.txt"]["description"] == "foo bar"
+
+
+@pytest.mark.parametrize("cwd", [False, True])
+def test_cli_add_dataset(tmpdir, test_data_dir, helpers, monkeypatch, cwd):
+    # init
+    crate_dir = tmpdir / "crate"
+    crate_dir.mkdir()
+    runner = CliRunner()
+    assert runner.invoke(cli, ["init", "-c", str(crate_dir)]).exit_code == 0
+    json_entities = helpers.read_json_entities(crate_dir)
+    assert set(json_entities) == {"./", "ro-crate-metadata.json"}
+    # add
+    dataset_path = crate_dir / "test_add_dir"
+    shutil.copytree(test_data_dir / "test_add_dir", dataset_path)
+    args = ["add", "dataset", str(dataset_path), "-P", "name=foo", "-P", "description=foo bar"]
+    if cwd:
+        monkeypatch.chdir(str(crate_dir))
+        dataset_path = dataset_path.relative_to(crate_dir)
+    else:
+        args.extend(["-c", str(crate_dir)])
+    result = runner.invoke(cli, args)
+    assert result.exit_code == 0
+    json_entities = helpers.read_json_entities(crate_dir)
+    assert "test_add_dir/" in json_entities
+    assert json_entities["test_add_dir/"]["@type"] == "Dataset"
+    assert json_entities["test_add_dir/"]["name"] == "foo"
+    assert json_entities["test_add_dir/"]["description"] == "foo bar"
+
+
+@pytest.mark.parametrize("cwd", [False, True])
 def test_cli_add_workflow(test_data_dir, helpers, monkeypatch, cwd):
     # init
     crate_dir = test_data_dir / "ro-crate-galaxy-sortchangecase"
@@ -143,7 +199,7 @@ def test_cli_add_workflow(test_data_dir, helpers, monkeypatch, cwd):
     assert json_entities["sort-and-change-case.ga"]["@type"] == "File"
     # add
     wf_path = crate_dir / "sort-and-change-case.ga"
-    args = ["add", "workflow"]
+    args = ["add", "workflow", "-P", "name=foo", "-P", "description=foo bar"]
     if cwd:
         monkeypatch.chdir(str(crate_dir))
         wf_path = wf_path.relative_to(crate_dir)
@@ -159,6 +215,8 @@ def test_cli_add_workflow(test_data_dir, helpers, monkeypatch, cwd):
         lang_id = f"https://w3id.org/workflowhub/workflow-ro-crate#{lang}"
         assert lang_id in json_entities
         assert json_entities["sort-and-change-case.ga"]["programmingLanguage"]["@id"] == lang_id
+        assert json_entities["sort-and-change-case.ga"]["name"] == "foo"
+        assert json_entities["sort-and-change-case.ga"]["description"] == "foo bar"
 
 
 @pytest.mark.parametrize("cwd", [False, True])
@@ -175,20 +233,27 @@ def test_cli_add_test_metadata(test_data_dir, helpers, monkeypatch, cwd):
     wf_path = crate_dir / "sort-and-change-case.ga"
     assert runner.invoke(cli, ["add", "workflow", "-c", str(crate_dir), "-l", "galaxy", str(wf_path)]).exit_code == 0
     # add test suite
-    result = runner.invoke(cli, ["add", "test-suite", "-c", str(crate_dir)])
+    result = runner.invoke(cli, ["add", "test-suite", "-c", str(crate_dir),
+                                 "-P", "name=foo", "-P", "description=foo bar"])
     assert result.exit_code == 0
     suite_id = result.output.strip()
     json_entities = helpers.read_json_entities(crate_dir)
     assert suite_id in json_entities
+    assert json_entities[suite_id]["name"] == "foo"
+    assert json_entities[suite_id]["description"] == "foo bar"
     # add test instance
-    result = runner.invoke(cli, ["add", "test-instance", "-c", str(crate_dir), suite_id, "http://example.com", "-r", "jobs"])
+    result = runner.invoke(cli, ["add", "test-instance", "-c", str(crate_dir),
+                                 suite_id, "http://example.com", "-r", "jobs",
+                                 "-P", "name=foo", "-P", "description=foo bar"])
     assert result.exit_code == 0
     instance_id = result.output.strip()
     json_entities = helpers.read_json_entities(crate_dir)
     assert instance_id in json_entities
+    assert json_entities[instance_id]["name"] == "foo"
+    assert json_entities[instance_id]["description"] == "foo bar"
     # add test definition
     def_path = crate_dir / def_id
-    args = ["add", "test-definition"]
+    args = ["add", "test-definition", "-P", "name=foo", "-P", "description=foo bar"]
     if cwd:
         monkeypatch.chdir(str(crate_dir))
         def_path = def_path.relative_to(crate_dir)
@@ -200,6 +265,8 @@ def test_cli_add_test_metadata(test_data_dir, helpers, monkeypatch, cwd):
     json_entities = helpers.read_json_entities(crate_dir)
     assert def_id in json_entities
     assert set(json_entities[def_id]["@type"]) == {"File", "TestDefinition"}
+    assert json_entities[def_id]["name"] == "foo"
+    assert json_entities[def_id]["description"] == "foo bar"
     # check extra terms
     metadata_path = crate_dir / helpers.METADATA_FILE_NAME
     with open(metadata_path, "rt") as f:

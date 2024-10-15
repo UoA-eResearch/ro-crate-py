@@ -1,8 +1,9 @@
-# Copyright 2019-2023 The University of Manchester, UK
-# Copyright 2020-2023 Vlaams Instituut voor Biotechnologie (VIB), BE
-# Copyright 2020-2023 Barcelona Supercomputing Center (BSC), ES
-# Copyright 2020-2023 Center for Advanced Studies, Research and Development in Sardinia (CRS4), IT
-# Copyright 2022-2023 École Polytechnique Fédérale de Lausanne, CH
+# Copyright 2019-2024 The University of Manchester, UK
+# Copyright 2020-2024 Vlaams Instituut voor Biotechnologie (VIB), BE
+# Copyright 2020-2024 Barcelona Supercomputing Center (BSC), ES
+# Copyright 2020-2024 Center for Advanced Studies, Research and Development in Sardinia (CRS4), IT
+# Copyright 2022-2024 École Polytechnique Fédérale de Lausanne, CH
+# Copyright 2024 Data Centre, SciLifeLab, SE
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -43,6 +44,9 @@ from .testinstance import TestInstance
 from .preview import Preview
 from .testservice import TestService
 from .testsuite import TestSuite
+from .encryptedgraphmessage import EncryptedGraphMessage
+from .encryptedcontextentity import EncryptedContextEntity
+from .keyholder import PubkeyObject, Keyholder
 
 __all__ = [
     "ComputationalWorkflow",
@@ -66,4 +70,8 @@ __all__ = [
     "TestSuite",
     "Workflow",
     "WorkflowDescription",
+    "EncryptedGraphMessage",
+    "PubkeyObject",
+    "EncryptedContextEntity",
+    "Keyholder"
 ]

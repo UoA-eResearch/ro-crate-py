@@ -1,8 +1,9 @@
-# Copyright 2019-2023 The University of Manchester, UK
-# Copyright 2020-2023 Vlaams Instituut voor Biotechnologie (VIB), BE
-# Copyright 2020-2023 Barcelona Supercomputing Center (BSC), ES
-# Copyright 2020-2023 Center for Advanced Studies, Research and Development in Sardinia (CRS4), IT
-# Copyright 2022-2023 École Polytechnique Fédérale de Lausanne, CH
+# Copyright 2019-2024 The University of Manchester, UK
+# Copyright 2020-2024 Vlaams Instituut voor Biotechnologie (VIB), BE
+# Copyright 2020-2024 Barcelona Supercomputing Center (BSC), ES
+# Copyright 2020-2024 Center for Advanced Studies, Research and Development in Sardinia (CRS4), IT
+# Copyright 2022-2024 École Polytechnique Fédérale de Lausanne, CH
+# Copyright 2024 Data Centre, SciLifeLab, SE
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,18 +17,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import errno
-import uuid
-import zipfile
 import atexit
+import errno
 import os
 import shutil
 import tempfile
-
+import uuid
+import zipfile
+import json
 from collections import OrderedDict
 from pathlib import Path
+from sys import platform
+from typing import List, Optional, Dict
 from urllib.parse import urljoin
+import gnupg
 
+from .metadata import find_root_entity_id, read_metadata
 from .model import (
     ComputationalWorkflow,
     ComputerLanguage,
@@ -47,16 +52,16 @@ from .model import (
     TestService,
     TestSuite,
     WorkflowDescription,
+    EncryptedContextEntity,
+    EncryptedGraphMessage,
+    Keyholder
 )
-from .model.metadata import WORKFLOW_PROFILE, TESTING_EXTRA_TERMS, metadata_class
 from .model.computationalworkflow import galaxy_to_abstract_cwl
 from .model.computerlanguage import get_lang
-from .model.testservice import get_service
+from .model.metadata import TESTING_EXTRA_TERMS, WORKFLOW_PROFILE, metadata_class
 from .model.softwareapplication import get_app
-
-from .utils import is_url, subclasses, get_norm_value, walk, as_list
-from .metadata import read_metadata, find_root_entity_id
-
+from .model.testservice import get_service
+from .utils import as_list, get_norm_value, is_url, subclasses, walk
 
 def pick_type(json_entity, type_map, fallback=None):
     try:
@@ -70,9 +75,16 @@ def pick_type(json_entity, type_map, fallback=None):
     return fallback
 
 
-class ROCrate():
-
-    def __init__(self, source=None, gen_preview=False, init=False, exclude=None):
+class ROCrate:
+    def __init__(
+        self,
+        source=None,
+        gen_preview=False,
+        init=False,
+        exclude=None,
+        gpg_binary: Optional[str] = None,
+        gpg_passphrase: Optional[str] = None
+    ):
         self.exclude = exclude
         self.__entity_map = {}
         # TODO: add this as @base in the context? At least when loading
@@ -82,6 +94,22 @@ class ROCrate():
         self.preview = None
         if gen_preview:
             self.add(Preview(self))
+        if gpg_binary:
+            self.gpg_binary = gpg_binary
+        elif platform in ["linux", "linux2"]:
+            # linux
+            self.gpg_binary = "/usr/bin/gpg"
+        elif platform == "darwin":
+            # OS X
+            self.gpg_binary = "/opt/homebrew/bin/gpg"
+        elif platform == "win32":
+            # Windows
+            self.gpg_binary = "C:\\Program Files (x86)\\GnuPG\\bin\\gpg.exe"
+        else:
+            raise NotImplementedError(
+                "Unknown OS, please define where the gpg executable binary can be located"
+            )
+        self.gpg_passphrase = gpg_passphrase
         if not source:
             # create a new ro-crate
             self.add(RootDataset(self), Metadata(self))
@@ -91,6 +119,7 @@ class ROCrate():
             source = self.__read(source, gen_preview=gen_preview)
         # in the zip case, self.source is the extracted dir
         self.source = source
+        
 
     def __init_from_tree(self, top_dir, gen_preview=False):
         top_dir = Path(top_dir)
@@ -104,7 +133,10 @@ class ROCrate():
                 self.add_dataset(source, source.relative_to(top_dir))
             for name in files:
                 source = root / name
-                if source == top_dir / Metadata.BASENAME or source == top_dir / LegacyMetadata.BASENAME:
+                if (
+                    source == top_dir / Metadata.BASENAME
+                    or source == top_dir / LegacyMetadata.BASENAME
+                ):
                     continue
                 if source != top_dir / Preview.BASENAME:
                     self.add_file(source, source.relative_to(top_dir))
@@ -112,30 +144,36 @@ class ROCrate():
                     self.add(Preview(self, source))
 
     def __read(self, source, gen_preview=False):
-        source = Path(source)
-        if not source.exists():
-            raise FileNotFoundError(errno.ENOENT, f"'{source}' not found")
-        if zipfile.is_zipfile(source):
-            zip_path = tempfile.mkdtemp(prefix="rocrate_")
-            atexit.register(shutil.rmtree, zip_path)
-            with zipfile.ZipFile(source, "r") as zf:
-                zf.extractall(zip_path)
-            source = Path(zip_path)
-        metadata_path = source / Metadata.BASENAME
-        if not metadata_path.is_file():
-            metadata_path = source / LegacyMetadata.BASENAME
-        if not metadata_path.is_file():
-            raise ValueError(f"Not a valid RO-Crate: missing {Metadata.BASENAME}")
+        if isinstance(source, dict):
+            metadata_path = source
+        else:
+            source = Path(source)
+            if not source.exists():
+                raise FileNotFoundError(errno.ENOENT, f"'{source}' not found")
+            if zipfile.is_zipfile(source):
+                zip_path = tempfile.mkdtemp(prefix="rocrate_")
+                atexit.register(shutil.rmtree, zip_path)
+                with zipfile.ZipFile(source, "r") as zf:
+                    zf.extractall(zip_path)
+                source = Path(zip_path)
+            metadata_path = source / Metadata.BASENAME
+            if not metadata_path.is_file():
+                metadata_path = source / LegacyMetadata.BASENAME
+            if not metadata_path.is_file():
+                raise ValueError(f"Not a valid RO-Crate: missing {Metadata.BASENAME}")
         _, entities = read_metadata(metadata_path)
         self.__read_data_entities(entities, source, gen_preview)
         self.__read_contextual_entities(entities)
+        self.__read_encrypted_entities()
         return source
 
     def __read_data_entities(self, entities, source, gen_preview):
+        if isinstance(source, dict):
+            source = Path("")
         metadata_id, root_id = find_root_entity_id(entities)
         root_entity = entities.pop(root_id)
-        assert root_id == root_entity.pop('@id')
-        parts = as_list(root_entity.pop('hasPart', []))
+        assert root_id == root_entity.pop("@id")
+        parts = as_list(root_entity.pop("hasPart", []))
         self.add(RootDataset(self, root_id, properties=root_entity))
         MetadataClass = metadata_class(metadata_id)
         metadata_properties = entities.pop(metadata_id)
@@ -143,18 +181,20 @@ class ROCrate():
 
         preview_entity = entities.pop(Preview.BASENAME, None)
         if preview_entity and not gen_preview:
-            self.add(Preview(self, source / Preview.BASENAME, properties=preview_entity))
+            self.add(
+                Preview(self, source / Preview.BASENAME, properties=preview_entity)
+            )
         self.__add_parts(parts, entities, source)
 
     def __add_parts(self, parts, entities, source):
         type_map = OrderedDict((_.__name__, _) for _ in subclasses(FileOrDir))
         for data_entity_ref in parts:
-            id_ = data_entity_ref['@id']
+            id_ = data_entity_ref["@id"]
             try:
                 entity = entities.pop(id_)
             except KeyError:
                 continue
-            assert id_ == entity.pop('@id')
+            assert id_ == entity.pop("@id")
             cls = pick_type(entity, type_map, fallback=DataEntity)
             if cls is DataEntity:
                 instance = DataEntity(self, identifier=id_, properties=entity)
@@ -169,34 +209,80 @@ class ROCrate():
     def __read_contextual_entities(self, entities):
         type_map = {_.__name__: _ for _ in subclasses(ContextEntity)}
         for identifier, entity in entities.items():
-            assert identifier == entity.pop('@id')
+            assert identifier == entity.pop("@id")
             cls = pick_type(entity, type_map, fallback=ContextEntity)
             self.add(cls(self, identifier, entity))
 
+    def __read_encrypted_entities(self):
+        entities=self.get_by_type(["SendAction", "EncryptedGraphMessage"],exact=True)
+        if(entities):
+            self.__decrypt(entities)
+
+    def __decrypt(self, encrypted:List[EncryptedGraphMessage]) -> Dict[str, Dict[str, str]]:
+        """Decrypts blocks of encrypted metadata for which the user possesses private keys
+        and adds them to the current crate as EncryptedContextEntities.
+        
+    	Args:
+        	encrypted (List[Dict[str,str]]): Encrypted fields, 
+            aggregated by comma separated strings of pubkeys
+
+    	Returns:
+        	Dict[str, Dict[str, str]]: jsonLD representation of all decrypted entities, 
+            keyed by their @id
+        """
+        gpg = gnupg.GPG(gpgbinary=self.gpg_binary)
+        decrypted_entitites = {}
+        for encrypted_entity in encrypted:
+            encrypted_block = encrypted_entity.get("encryptedGraph")
+            decrypted = gpg.decrypt(encrypted_block,  passphrase=self.gpg_passphrase)
+            if not decrypted.ok:
+                continue
+            decrypted_data = json.loads(decrypted.data)
+            decrypted_dict = {_["@id"]: _ for _ in decrypted_data}
+            for identifier, decrypted_item in decrypted_dict.items():
+                decrypted_entity : ContextEntity = self.add(EncryptedContextEntity(crate=self,
+                identifier=identifier, properties=decrypted_item))
+            if decrypted_entity.type is ["SendAction", "EncryptedGraphMessage"]:
+                encrypted.append(decrypted_entity)
+            decrypted_entitites.update(decrypted_dict)
+        return decrypted_entitites
+
+
+
+
     @property
     def default_entities(self):
-        return [e for e in self.__entity_map.values()
-                if isinstance(e, (RootDataset, Metadata, LegacyMetadata, Preview))]
+        return [
+            e
+            for e in self.__entity_map.values()
+            if isinstance(e, (RootDataset, Metadata, LegacyMetadata, Preview))
+        ]
 
     @property
     def data_entities(self):
-        return [e for e in self.__entity_map.values()
-                if not isinstance(e, (RootDataset, Metadata, LegacyMetadata, Preview))
-                and hasattr(e, "write")]
+        return [
+            e
+            for e in self.__entity_map.values()
+            if not isinstance(e, (RootDataset, Metadata, LegacyMetadata, Preview))
+            and hasattr(e, "write")
+        ]
 
     @property
     def contextual_entities(self):
-        return [e for e in self.__entity_map.values()
-                if not isinstance(e, (RootDataset, Metadata, LegacyMetadata, Preview))
-                and not hasattr(e, "write")]
+        return [
+            e
+            for e in self.__entity_map.values()
+            if not isinstance(e, (RootDataset, Metadata, LegacyMetadata, Preview))
+            and not hasattr(e, "write")
+        ]
 
     @property
     def name(self):
-        return self.root_dataset.get('name')
+        return self.root_dataset.get("name")
 
     @name.setter
     def name(self, value):
-        self.root_dataset['name'] = value
+        self.root_dataset["name"] = value
 
     @property
     def datePublished(self):
@@ -208,75 +294,75 @@ class ROCrate():
 
     @property
     def creator(self):
-        return self.root_dataset.get('creator')
+        return self.root_dataset.get("creator")
 
     @creator.setter
     def creator(self, value):
-        self.root_dataset['creator'] = value
+        self.root_dataset["creator"] = value
 
     @property
     def license(self):
-        return self.root_dataset.get('license')
+        return self.root_dataset.get("license")
 
     @license.setter
     def license(self, value):
-        self.root_dataset['license'] = value
+        self.root_dataset["license"] = value
 
     @property
     def description(self):
-        return self.root_dataset.get('description')
+        return self.root_dataset.get("description")
 
     @description.setter
     def description(self, value):
-        self.root_dataset['description'] = value
+        self.root_dataset["description"] = value
 
     @property
     def keywords(self):
-        return self.root_dataset.get('keywords')
+        return self.root_dataset.get("keywords")
 
     @keywords.setter
     def keywords(self, value):
-        self.root_dataset['keywords'] = value
+        self.root_dataset["keywords"] = value
 
     @property
     def publisher(self):
-        return self.root_dataset.get('publisher')
+        return self.root_dataset.get("publisher")
 
     @publisher.setter
     def publisher(self, value):
-        self.root_dataset['publisher'] = value
+        self.root_dataset["publisher"] = value
 
     @property
     def isBasedOn(self):
-        return self.root_dataset.get('isBasedOn')
+        return self.root_dataset.get("isBasedOn")
 
     @isBasedOn.setter
     def isBasedOn(self, value):
-        self.root_dataset['isBasedOn'] = value
+        self.root_dataset["isBasedOn"] = value
 
     @property
     def image(self):
-        return self.root_dataset.get('image')
+        return self.root_dataset.get("image")
 
     @image.setter
     def image(self, value):
-        self.root_dataset['image'] = value
+        self.root_dataset["image"] = value
 
     @property
     def CreativeWorkStatus(self):
-        return self.root_dataset.get('CreativeWorkStatus')
+        return self.root_dataset.get("CreativeWorkStatus")
 
     @CreativeWorkStatus.setter
     def CreativeWorkStatus(self, value):
-        self.root_dataset['CreativeWorkStatus'] = value
+        self.root_dataset["CreativeWorkStatus"] = value
 
     @property
     def mainEntity(self):
-        return self.root_dataset.get('mainEntity')
+        return self.root_dataset.get("mainEntity")
 
     @mainEntity.setter
     def mainEntity(self, value):
-        self.root_dataset['mainEntity'] = value
+        self.root_dataset["mainEntity"] = value
 
     @property
     def test_dir(self):
@@ -294,10 +380,16 @@ class ROCrate():
 
     @property
     def test_suites(self):
-        mentions = [_ for _ in self.root_dataset.get('mentions', []) if isinstance(_, TestSuite)]
-        about = [_ for _ in self.root_dataset.get('about', []) if isinstance(_, TestSuite)]
+        mentions = [
+            _ for _ in self.root_dataset.get("mentions", []) if isinstance(_, TestSuite)
+        ]
+        about = [
+            _ for _ in self.root_dataset.get("about", []) if isinstance(_, TestSuite)
+        ]
         if self.test_dir:
-            legacy_about = [_ for _ in self.test_dir.get('about', []) if isinstance(_, TestSuite)]
+            legacy_about = [
+                _ for _ in self.test_dir.get("about", []) if isinstance(_, TestSuite)
+            ]
             about += legacy_about
         return list(set(mentions + about))  # remove any duplicate refs
 
@@ -326,38 +418,42 @@ class ROCrate():
             return [_ for _ in self.get_entities() if type_ <= set(as_list(_.type))]
 
     def add_file(
-            self,
-            source=None,
-            dest_path=None,
-            fetch_remote=False,
-            validate_url=False,
-            properties=None
+        self,
+        source=None,
+        dest_path=None,
+        fetch_remote=False,
+        validate_url=False,
+        properties=None,
     ):
-        return self.add(File(
-            self,
-            source=source,
-            dest_path=dest_path,
-            fetch_remote=fetch_remote,
-            validate_url=validate_url,
-            properties=properties
-        ))
+        return self.add(
+            File(
+                self,
+                source=source,
+                dest_path=dest_path,
+                fetch_remote=fetch_remote,
+                validate_url=validate_url,
+                properties=properties,
+            )
+        )
 
     def add_dataset(
-            self,
-            source=None,
-            dest_path=None,
-            fetch_remote=False,
-            validate_url=False,
-            properties=None
+        self,
+        source=None,
+        dest_path=None,
+        fetch_remote=False,
+        validate_url=False,
+        properties=None,
     ):
-        return self.add(Dataset(
-            self,
-            source=source,
-            dest_path=dest_path,
-            fetch_remote=fetch_remote,
-            validate_url=validate_url,
-            properties=properties
-        ))
+        return self.add(
+            Dataset(
+                self,
+                source=source,
+                dest_path=dest_path,
+                fetch_remote=fetch_remote,
+                validate_url=validate_url,
+                properties=properties,
+            )
+        )
 
     add_directory = add_dataset
 
@@ -423,7 +519,9 @@ class ROCrate():
             if e is self.preview:
                 self.preview = None
             elif hasattr(e, "write"):
-                self.root_dataset["hasPart"] = [_ for _ in self.root_dataset.get("hasPart", []) if _ != e]
+                self.root_dataset["hasPart"] = [
+                    _ for _ in self.root_dataset.get("hasPart", []) if _ != e
+                ]
                 if not self.root_dataset["hasPart"]:
                     del self.root_dataset._jsonld["hasPart"]
             self.__entity_map.pop(e.canonical_id(), None)
@@ -446,7 +544,7 @@ class ROCrate():
     def write(self, base_path):
         base_path = Path(base_path)
         base_path.mkdir(parents=True, exist_ok=True)
-        if self.source:
+        if self.source and not isinstance(self.source, dict):
             self._copy_unlisted(self.source, base_path)
         for writable_entity in self.data_entities + self.default_entities:
             writable_entity.write(base_path)
@@ -466,13 +564,28 @@ class ROCrate():
         return archive
 
     def add_workflow(
-            self, source=None, dest_path=None, fetch_remote=False, validate_url=False, properties=None,
-            main=False, lang="cwl", lang_version=None, gen_cwl=False, cls=ComputationalWorkflow
+        self,
+        source=None,
+        dest_path=None,
+        fetch_remote=False,
+        validate_url=False,
+        properties=None,
+        main=False,
+        lang="cwl",
+        lang_version=None,
+        gen_cwl=False,
+        cls=ComputationalWorkflow,
     ):
-        workflow = self.add(cls(
-            self, source=source, dest_path=dest_path, fetch_remote=fetch_remote,
-            validate_url=validate_url, properties=properties
-        ))
+        workflow = self.add(
+            cls(
+                self,
+                source=source,
+                dest_path=dest_path,
+                fetch_remote=fetch_remote,
+                validate_url=validate_url,
+                properties=properties,
+            )
+        )
         if isinstance(lang, ComputerLanguage):
             assert lang.crate is self
         else:
@@ -482,38 +595,49 @@ class ROCrate():
         workflow.lang = lang
         if main:
             self.mainEntity = workflow
-            profiles = set(_.rstrip("/") for _ in get_norm_value(self.metadata, "conformsTo"))
+            profiles = set(
+                _.rstrip("/") for _ in get_norm_value(self.metadata, "conformsTo")
+            )
             profiles.add(WORKFLOW_PROFILE)
             self.metadata["conformsTo"] = [{"@id": _} for _ in sorted(profiles)]
         if gen_cwl and lang_str != "cwl":
             if lang_str != "galaxy":
-                raise ValueError(f"conversion from {lang.name} to abstract CWL not supported")
+                raise ValueError(
+                    f"conversion from {lang.name} to abstract CWL not supported"
+                )
             cwl_source = galaxy_to_abstract_cwl(source)
             cwl_dest_path = Path(source).with_suffix(".cwl").name
             cwl_workflow = self.add_workflow(
-                source=cwl_source, dest_path=cwl_dest_path, fetch_remote=fetch_remote, properties=properties,
-                main=False, lang="cwl", gen_cwl=False, cls=WorkflowDescription
+                source=cwl_source,
+                dest_path=cwl_dest_path,
+                fetch_remote=fetch_remote,
+                properties=properties,
+                main=False,
+                lang="cwl",
+                gen_cwl=False,
+                cls=WorkflowDescription,
             )
             workflow.subjectOf = cwl_workflow
         return workflow
 
-    def add_test_suite(self, identifier=None, name=None, main_entity=None):
+    def add_test_suite(self, identifier=None, name=None, main_entity=None, properties=None):
         test_ref_prop = "mentions"
         if not main_entity:
             main_entity = self.mainEntity
             if not main_entity:
                 test_ref_prop = "about"
-        suite = self.add(TestSuite(self, identifier))
-        suite.name = name or suite.id.lstrip("#")
+        suite = self.add(TestSuite(self, identifier, properties=properties))
+        if not properties or "name" not in properties:
+            suite.name = name or suite.id.lstrip("#")
         if main_entity:
             suite["mainEntity"] = main_entity
         self.root_dataset.append_to(test_ref_prop, suite)
         self.metadata.extra_terms.update(TESTING_EXTRA_TERMS)
         return suite
 
-    def add_test_instance(self, suite, url, resource="", service="jenkins", identifier=None, name=None):
+    def add_test_instance(self, suite, url, resource="", service="jenkins", identifier=None, name=None, properties=None):
         suite = self.__validate_suite(suite)
-        instance = self.add(TestInstance(self, identifier))
+        instance = self.add(TestInstance(self, identifier, properties=properties))
         instance.url = url
         instance.resource = resource
         if isinstance(service, TestService):
@@ -522,19 +646,33 @@ class ROCrate():
             service = get_service(self, service)
             self.add(service)
         instance.service = service
-        instance.name = name or instance.id.lstrip("#")
+        if not properties or "name" not in properties:
+            instance.name = name or instance.id.lstrip("#")
         suite.append_to("instance", instance)
         self.metadata.extra_terms.update(TESTING_EXTRA_TERMS)
         return instance
 
     def add_test_definition(
-            self, suite, source=None, dest_path=None, fetch_remote=False, validate_url=False, properties=None,
-            engine="planemo", engine_version=None
+        self,
+        suite,
+        source=None,
+        dest_path=None,
+        fetch_remote=False,
+        validate_url=False,
+        properties=None,
+        engine="planemo",
+        engine_version=None,
     ):
         suite = self.__validate_suite(suite)
         definition = self.add(
-            TestDefinition(self, source=source, dest_path=dest_path, fetch_remote=fetch_remote,
-                           validate_url=validate_url, properties=properties)
+            TestDefinition(
+                self,
+                source=source,
+                dest_path=dest_path,
+                fetch_remote=fetch_remote,
+                validate_url=validate_url,
+                properties=properties,
+            )
         )
         if isinstance(engine, SoftwareApplication):
             assert engine.crate is self
@@ -563,15 +701,13 @@ class ROCrate():
         """
         required_keys = {"@id", "@type"}
         if not jsonld or not required_keys.issubset(jsonld):
-            raise ValueError("you must provide a non-empty JSON-LD dictionary with @id and @type set")
+            raise ValueError(
+                "you must provide a non-empty JSON-LD dictionary with @id and @type set"
+            )
         entity_id = jsonld.pop("@id")
         if self.get(entity_id):
             raise ValueError(f"entity {entity_id} already exists in the RO-Crate")
-        return self.add(ContextEntity(
-            self,
-            entity_id,
-            properties=jsonld
-        ))
+        return self.add(ContextEntity(self, entity_id, properties=jsonld))
 
     def update_jsonld(self, jsonld):
         """Update an entity in the RO-Crate from a JSON-LD dictionary.
@@ -593,7 +729,7 @@ class ROCrate():
         entity: Entity = self.get(entity_id)
         if not entity:
             raise ValueError(f"entity {entity_id} does not exist in the RO-Crate")
-        jsonld = {k: v for k, v in jsonld.items() if not k.startswith('@')}
+        jsonld = {k: v for k, v in jsonld.items() if not k.startswith("@")}
         entity._jsonld.update(jsonld)
         return entity
 
@@ -626,16 +762,27 @@ class ROCrate():
             if suite is None:
                 raise ValueError("suite not found")
         return suite
+    
+    def retreive_gpg_keys(self):
+        keyholders = self.get_by_type(["ContactPoint", "EncryptionKeyholder"], True)
+        gpg = gnupg.GPG(gpgbinary=self.gpg_binary)
+        _ = [keyholder.retreive_keys(gpg) for keyholder in keyholders if isinstance(keyholder, Keyholder)]
 
 
-def make_workflow_rocrate(workflow_path, wf_type, include_files=[],
-                          fetch_remote=False, cwl=None, diagram=None):
+def make_workflow_rocrate(
+    workflow_path, wf_type, include_files=[], fetch_remote=False, cwl=None, diagram=None
+):
     wf_crate = ROCrate()
     workflow_path = Path(workflow_path)
     wf_crate.add_workflow(
-        workflow_path, workflow_path.name, fetch_remote=fetch_remote,
-        main=True, lang=wf_type, gen_cwl=(cwl is None)
+        workflow_path,
+        workflow_path.name,
+        fetch_remote=fetch_remote,
+        main=True,
+        lang=wf_type,
+        gen_cwl=(cwl is None),
     )
     for file_entry in include_files:
         wf_crate.add_file(file_entry)
     return wf_crate
+    

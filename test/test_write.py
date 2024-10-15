@@ -1,8 +1,9 @@
-# Copyright 2019-2023 The University of Manchester, UK
-# Copyright 2020-2023 Vlaams Instituut voor Biotechnologie (VIB), BE
-# Copyright 2020-2023 Barcelona Supercomputing Center (BSC), ES
-# Copyright 2020-2023 Center for Advanced Studies, Research and Development in Sardinia (CRS4), IT
-# Copyright 2022-2023 École Polytechnique Fédérale de Lausanne, CH
+# Copyright 2019-2024 The University of Manchester, UK
+# Copyright 2020-2024 Vlaams Instituut voor Biotechnologie (VIB), BE
+# Copyright 2020-2024 Barcelona Supercomputing Center (BSC), ES
+# Copyright 2020-2024 Center for Advanced Studies, Research and Development in Sardinia (CRS4), IT
+# Copyright 2022-2024 École Polytechnique Fédérale de Lausanne, CH
+# Copyright 2024 Data Centre, SciLifeLab, SE
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,8 +19,10 @@
 
 import io
 import pytest
+import requests
 import os
 import uuid
+import sys
 import zipfile
 from itertools import product
 from urllib.error import URLError
@@ -150,6 +153,7 @@ def test_remote_uri(tmpdir, helpers, fetch_remote, validate_url, to_zip):
     if fetch_remote:
         out_file = out_crate.dereference(file_.id)
         assert (out_path / relpath).is_file()
+        assert out_file["contentUrl"] == url
     else:
         out_file = out_crate.dereference(url)
         assert not (out_path / relpath).exists()
@@ -213,6 +217,7 @@ def test_looks_like_file_uri(tmpdir, monkeypatch):
     assert (out_path / f_name).is_file()
 
 
+@pytest.mark.skipif(sys.platform == "darwin", reason="FTP opening broken on macOS CI instances")
 @pytest.mark.slow
 @pytest.mark.parametrize("fetch_remote", [False, True])
 def test_ftp_uri(tmpdir, fetch_remote):
@@ -431,3 +436,19 @@ def test_add_tree(test_data_dir, tmpdir):
 
     with pytest.raises(ValueError):
         crate.add_tree(None, dest_path="foobar")
+
+
+def test_http_header(tmpdir):
+    crate = ROCrate()
+    url = "https://zenodo.org/records/10782431/files/lysozyme_datasets.zip"
+    file_ = crate.add_file(url, validate_url=True)
+    assert file_.id == url
+    out_path = tmpdir / 'ro_crate_out'
+    crate.write(out_path)
+    out_crate = ROCrate(out_path)
+    out_file = out_crate.dereference(url)
+    props = out_file.properties()
+    assert props.get("encodingFormat") == "application/octet-stream"
+    assert "sdDatePublished" in props
+    with requests.head(url) as response:
+        assert props["sdDatePublished"] == response.headers.get("last-modified")
