@@ -94,8 +94,8 @@ def test_add_keyholder(test_pubkey_object):
         pubkey_fingerprint=test_pubkey_object
     )
     crate.add(test_keyholder)
-    assert test_keyholder.id == "#"+test_pubkey_object.key
-    keyholder_in_crate = crate.dereference("#"+test_pubkey_object.key)
+    assert test_keyholder.id == test_pubkey_object.key
+    keyholder_in_crate = crate.dereference(test_pubkey_object.key)
     assert isinstance(keyholder_in_crate, Keyholder)
     assert keyholder_in_crate.get("pubkey_fingerprints") == test_pubkey_object.key
 
