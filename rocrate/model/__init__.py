@@ -45,6 +45,9 @@ from .testinstance import TestInstance
 from .preview import Preview
 from .testservice import TestService
 from .testsuite import TestSuite
+from .encryptedgraphmessage import EncryptedGraphMessage
+from .encryptedcontextentity import EncryptedContextEntity
+from .keyholder import PubkeyObject, Keyholder
 
 __all__ = [
     "ComputationalWorkflow",
@@ -68,4 +71,8 @@ __all__ = [
     "TestSuite",
     "Workflow",
     "WorkflowDescription",
+    "EncryptedGraphMessage",
+    "PubkeyObject",
+    "EncryptedContextEntity",
+    "Keyholder"
 ]

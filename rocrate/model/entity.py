@@ -24,7 +24,10 @@ import uuid
 from collections.abc import MutableMapping
 
 from dateutil.parser import isoparse
+
+# from rocrate.rocrate import ROCrate
 from .. import vocabs
+
 
 
 class Entity(MutableMapping):
